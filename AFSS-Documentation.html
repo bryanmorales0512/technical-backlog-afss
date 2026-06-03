@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AFSS Backlog Tracker Documentation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #fff; color: #1a1a2e; }
+
+  @page { size: A4 portrait; margin: 0; }
+
+  .cover, .page {
+    width: 210mm;
+    height: 297mm;
+    overflow: hidden;
+    page-break-after: always;
+    box-sizing: border-box;
+  }
+  .page:last-child { page-break-after: auto; }
+
+  /* COVER */
+  .cover {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: linear-gradient(160deg, #0f172a 0%, #1e3a5f 60%, #b91c1c 100%);
+    color: white; text-align: center; padding: 50px;
+  }
+  .cover .logo { font-size: 60px; margin-bottom: 20px; }
+  .cover h1 { font-size: 48px; font-weight: 900; letter-spacing: 8px; margin-bottom: 8px; }
+  .cover h2 { font-size: 16px; font-weight: 300; letter-spacing: 3px; opacity: 0.8; margin-bottom: 10px; }
+  .cover .version { font-size: 13px; opacity: 0.5; margin-bottom: 36px; }
+  .cover .divider { width: 100px; height: 2px; background: rgba(255,255,255,0.3); margin: 0 auto 36px; border-radius: 2px; }
+  .cover .desc { font-size: 14px; opacity: 0.75; max-width: 480px; line-height: 2; }
+  .cover .badges { display: flex; gap: 10px; justify-content: center; margin-top: 36px; flex-wrap: wrap; }
+  .cover .badge { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 5px 14px; font-size: 11px; font-weight: 600; }
+  .cover .meta { margin-top: 40px; font-size: 11px; opacity: 0.4; }
+
+  /* TOC PAGE */
+  .toc-page { padding: 50px 56px; }
+  .toc-title { font-size: 28px; font-weight: 800; color: #0f172a; margin-bottom: 30px; border-bottom: 3px solid #b91c1c; padding-bottom: 12px; }
+  .toc-item { display: flex; align-items: baseline; gap: 0; padding: 6px 0; border-bottom: 1px dotted #e5e7eb; }
+  .toc-item .toc-num { font-size: 12px; font-weight: 700; color: #b91c1c; width: 36px; flex-shrink: 0; }
+  .toc-item .toc-name { font-size: 13px; color: #1f2937; flex: 1; font-weight: 500; }
+  .toc-item .toc-pg { font-size: 11px; color: #9ca3af; font-weight: 600; }
+  .toc-sub { padding: 3px 0 3px 36px; border-bottom: 1px dotted #f3f4f6; display: flex; align-items: baseline; }
+  .toc-sub .toc-name { font-size: 11.5px; color: #4b5563; flex: 1; }
+  .toc-sub .toc-pg { font-size: 10px; color: #9ca3af; }
+
+  /* PAGE */
+  .page { padding: 32px 44px; }
+  .page-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px; padding-bottom: 10px;
+    border-bottom: 2px solid #f3f4f6;
+  }
+  .page-header .pg-title { font-size: 20px; font-weight: 800; color: #0f172a; }
+  .page-header .pg-meta { text-align: right; }
+  .page-header .pg-num { font-size: 11px; color: #9ca3af; display: block; }
+  .page-header .pg-section { font-size: 10px; color: #b91c1c; font-weight: 600; display: block; }
+  .red-bar { display: inline-block; width: 4px; height: 20px; background: #b91c1c; border-radius: 2px; margin-right: 10px; vertical-align: middle; }
+
+  /* TYPOGRAPHY */
+  h3.sh { font-size: 11px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.6px; margin: 14px 0 7px; }
+  p.body { font-size: 11px; color: #374151; line-height: 1.7; margin-bottom: 8px; }
+  p.lead { font-size: 13px; color: #1f2937; line-height: 1.8; margin-bottom: 12px; font-weight: 400; }
+
+  /* HIGHLIGHT BOX */
+  .hbox { border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
+  .hbox.info { background: #eff6ff; border-left: 3px solid #1d4ed8; }
+  .hbox.warn { background: #fefce8; border-left: 3px solid #ca8a04; }
+  .hbox.tip  { background: #f0fdf4; border-left: 3px solid #16a34a; }
+  .hbox.red  { background: #fef2f2; border-left: 3px solid #b91c1c; }
+  .hbox .hbox-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .hbox.info .hbox-title { color: #1d4ed8; }
+  .hbox.warn .hbox-title { color: #ca8a04; }
+  .hbox.tip  .hbox-title { color: #16a34a; }
+  .hbox.red  .hbox-title { color: #b91c1c; }
+  .hbox p { font-size: 10.5px; color: #374151; line-height: 1.65; }
+
+  /* CODE */
+  .code-block {
+    background: #0f172a; color: #e2e8f0; border-radius: 8px;
+    padding: 12px 14px; font-family: 'Courier New', monospace; font-size: 10px;
+    line-height: 1.7; margin-bottom: 10px; overflow: hidden;
+  }
+  .code-block .comment { color: #64748b; }
+  .code-block .key { color: #7dd3fc; }
+  .code-block .val { color: #86efac; }
+  .code-block .str { color: #fca5a5; }
+  .code-block .kw { color: #c084fc; }
+  code { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 3px; padding: 1px 5px; font-family: 'Courier New', monospace; font-size: 10px; color: #be123c; }
+
+  /* TABLE */
+  .doc-table { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-bottom: 10px; }
+  .doc-table th { background: #0f172a; color: #fff; padding: 7px 10px; text-align: left; font-size: 10px; letter-spacing: 0.3px; }
+  .doc-table td { padding: 5px 10px; border-bottom: 1px solid #e5e7eb; color: #374151; vertical-align: top; line-height: 1.4; }
+  .doc-table tr:nth-child(even) td { background: #f8fafc; }
+
+  /* TWO-COL */
+  .two-col { display: flex; gap: 14px; }
+  .two-col > * { flex: 1; min-width: 0; }
+
+  /* CARD */
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 13px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .card .ct { font-size: 10px; font-weight: 700; color: #0f172a; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .card ul { list-style: none; padding: 0; }
+  .card ul li { font-size: 10.5px; color: #4b5563; padding: 2px 0; border-bottom: 1px solid #f3f4f6; line-height: 1.4; }
+  .card ul li:last-child { border-bottom: none; }
+  .card ul li::before { content: "▸ "; color: #b91c1c; font-size: 9px; }
+
+  /* STEP */
+  .step { display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-start; }
+  .step-num { background: #b91c1c; color: #fff; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+  .step-body .step-title { font-size: 11.5px; font-weight: 700; color: #0f172a; margin-bottom: 3px; }
+  .step-body .step-desc { font-size: 10.5px; color: #4b5563; line-height: 1.6; }
+
+  /* BADGE */
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; margin-right: 4px; }
+  .pill.red    { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+  .pill.blue   { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+  .pill.green  { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+  .pill.orange { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+  .pill.gray   { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+  .pill.purple { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+
+  /* ENV TABLE */
+  .env-row { display: flex; gap: 0; border-bottom: 1px solid #e5e7eb; font-size: 10px; }
+  .env-row:nth-child(even) { background: #f8fafc; }
+  .env-row .ev { padding: 5px 10px; font-family: 'Courier New', monospace; color: #be123c; width: 42%; flex-shrink: 0; font-weight: 600; }
+  .env-row .ed { padding: 5px 10px; color: #374151; flex: 1; line-height: 1.4; }
+  .env-header { display: flex; background: #0f172a; color: #fff; font-size: 10px; font-weight: 700; }
+  .env-header > div { padding: 6px 10px; }
+
+  /* SECTION DIVIDER */
+  .sec-div { background: #f8fafc; border-radius: 6px; padding: 6px 12px; margin-bottom: 10px; font-size: 11px; font-weight: 700; color: #0f172a; border-left: 3px solid #b91c1c; }
+
+  /* FOLDER TREE */
+  .tree { font-family: 'Courier New', monospace; font-size: 10px; color: #334155; line-height: 1.8; background: #f8fafc; border-radius: 8px; padding: 12px 14px; border: 1px solid #e2e8f0; }
+  .tree .folder { color: #1d4ed8; font-weight: 700; }
+  .tree .file { color: #374151; }
+  .tree .comment { color: #94a3b8; font-style: italic; }
+
+  /* STATUS ROW SWATCH */
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+
+  /* METHOD */
+  .method { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 700; }
+  .method.get  { background: #dcfce7; color: #166534; }
+  .method.post { background: #dbeafe; color: #1e40af; }
+
+  /* CHIPS */
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .chip { font-size: 9.5px; font-weight: 600; padding: 2px 7px; border-radius: 12px; background: #f1f5f9; border: 1px solid #e2e8f0; color: #374151; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ COVER ══════════════════ -->
+<div class="cover">
+  <div class="logo">📊</div>
+  <h1>AFSS</h1>
+  <h2>BACKLOG TRACKER DOCUMENTATION</h2>
+  <div class="version">Australian Fire & Safety Systems — v1.0</div>
+  <div class="divider"></div>
+  <div class="desc">
+    Complete reference for the AFSS Backlog Tracker dashboard.<br>
+    Dashboard · SimPRO Integration · Caching · Deployment · Automation
+  </div>
+  <div class="badges">
+    <span class="badge">Next.js 16</span>
+    <span class="badge">React 19</span>
+    <span class="badge">TypeScript 5</span>
+    <span class="badge">Tailwind CSS v4</span>
+    <span class="badge">SimPRO API</span>
+    <span class="badge">Cloud Run</span>
+  </div>
+  <div class="meta">Red Adair Group · buoyant-purpose-475203-t9 · australia-southeast1</div>
+</div>
+
+<!-- ══════════════════ TABLE OF CONTENTS ══════════════════ -->
+<div class="toc-page">
+  <div class="toc-title">Table of Contents</div>
+
+  <div class="toc-item"><span class="toc-num">1</span><span class="toc-name">Project Overview</span><span class="toc-pg">3</span></div>
+  <div class="toc-sub"><span class="toc-name">Purpose & Users</span><span class="toc-pg">3</span></div>
+  <div class="toc-sub"><span class="toc-name">Key Features</span><span class="toc-pg">3</span></div>
+  <div class="toc-sub"><span class="toc-name">Technology Stack</span><span class="toc-pg">3</span></div>
+
+  <div class="toc-item" style="margin-top:6px;"><span class="toc-num">2</span><span class="toc-name">Dashboard — Tech Team Works</span><span class="toc-pg">4</span></div>
+  <div class="toc-sub"><span class="toc-name">Status Rows Explained</span><span class="toc-pg">4</span></div>
+  <div class="toc-sub"><span class="toc-name">Month Filter & Totals</span><span class="toc-pg">4</span></div>
+  <div class="toc-sub"><span class="toc-name">Loading & Partial Data States</span><span class="toc-pg">4</span></div>
+
+  <div class="toc-item" style="margin-top:6px;"><span class="toc-num">3</span><span class="toc-name">Dashboard — Team Supply & Tech Support Works</span><span class="toc-pg">5</span></div>
+  <div class="toc-sub"><span class="toc-name">Technical Team Supply</span><span class="toc-pg">5</span></div>
+  <div class="toc-sub"><span class="toc-name">Other Billable Work</span><span class="toc-pg">5</span></div>
+  <div class="toc-sub"><span class="toc-name">Invested Time & Quality Assurance</span><span class="toc-pg">5</span></div>
+
+  <div class="toc-item" style="margin-top:6px;"><span class="toc-num">4</span><span class="toc-name">SimPRO Integration & Data Logic</span><span class="toc-pg">6</span></div>
+  <div class="toc-sub"><span class="toc-name">CFSP Filter & Job Classification</span><span class="toc-pg">6</span></div>
+  <div class="toc-sub"><span class="toc-name">Job Enrichment Pipeline</span><span class="toc-pg">6</span></div>
+  <div class="toc-sub"><span class="toc-name">Hour & Price Defaults</span><span class="toc-pg">6</span></div>
+
+  <div class="toc-item" style="margin-top:6px;"><span class="toc-num">5</span><span class="toc-name">API Reference</span><span class="toc-pg">7</span></div>
+  <div class="toc-sub"><span class="toc-name">All Endpoints</span><span class="toc-pg">7</span></div>
+  <div class="toc-sub"><span class="toc-name">Response Fields</span><span class="toc-pg">7</span></div>
+  <div class="toc-sub"><span class="toc-name">X-Partial Header</span><span class="toc-pg">7</span></div>
+
+  <div class="toc-item" style="margin-top:6px;"><span class="toc-num">6</span><span class="toc-name">Caching Strategy & Performance</span><span class="toc-pg">8</span></div>
+  <div class="toc-sub"><span class="toc-name">Cache Storage & TTL</span><span class="toc-pg">8</span></div>
+  <div class="toc-sub"><span class="toc-name">Stale-While-Revalidate</span><span class="toc-pg">8</span></div>
+  <div class="toc-sub"><span class="toc-name">Cold Cache & Warmup</span><span class="toc-pg">8</span></div>
+
+  <div class="toc-item" style="margin-top:6px;"><span class="toc-num">7</span><span class="toc-name">Team Members & Companies</span><span class="toc-pg">9</span></div>
+  <div class="toc-sub"><span class="toc-name">AFSS Auditor Team</span><span class="toc-pg">9</span></div>
+  <div class="toc-sub"><span class="toc-name">Companies & Job Classification</span><span class="toc-pg">9</span></div>
+
+  <div class="toc-item" style="margin-top:6px;"><span class="toc-num">8</span><span class="toc-name">Deployment Guide</span><span class="toc-pg">10</span></div>
+  <div class="toc-sub"><span class="toc-name">Cloud Run Setup</span><span class="toc-pg">10</span></div>
+  <div class="toc-sub"><span class="toc-name">Deploy Command</span><span class="toc-pg">10</span></div>
+  <div class="toc-sub"><span class="toc-name">Post-Deploy Checklist</span><span class="toc-pg">10</span></div>
+
+  <div class="toc-item" style="margin-top:6px;"><span class="toc-num">9</span><span class="toc-name">Automation & Configuration</span><span class="toc-pg">11</span></div>
+  <div class="toc-sub"><span class="toc-name">Cloud Scheduler</span><span class="toc-pg">11</span></div>
+  <div class="toc-sub"><span class="toc-name">Environment Variables</span><span class="toc-pg">11</span></div>
+  <div class="toc-sub"><span class="toc-name">Project File Structure</span><span class="toc-pg">11</span></div>
+</div>
+
+<!-- ══════════════════ PAGE 3: PROJECT OVERVIEW ══════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="pg-title"><span class="red-bar"></span>Project Overview</div>
+    <div class="pg-meta"><span class="pg-section">Section 1</span><span class="pg-num">Page 3</span></div>
+  </div>
+
+  <p class="lead">The AFSS Backlog Tracker is an internal web dashboard that connects live to SimPRO to give management a real-time, consolidated view of the CFSP audit backlog across three companies, team availability, and scheduled technical support work.</p>
+
+  <div class="two-col">
+    <div>
+      <h3 class="sh">Key Features</h3>
+      <div class="card">
+        <div class="ct">Backlog Table</div>
+        <ul>
+          <li>Live job counts, hours & invoice amounts per company</li>
+          <li>Status rows: Scheduled / Tentative / Awaiting Client / Complete</li>
+          <li>Month filter to view jobs by scheduled date</li>
+          <li>Progressively loads — each company appears as data arrives</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="ct">Technical Team Supply</div>
+        <ul>
+          <li>Remaining billable hours per auditor for current month</li>
+          <li>Leave automatically deducted from SimPRO schedule data</li>
+          <li>Before 3 PM: today counts; after 3 PM: tomorrow starts</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="ct">Technical Support Works</div>
+        <ul>
+          <li>Other billable work scheduled to tech team (today → month end)</li>
+          <li>Invested time: pending jobs for customers being served this period</li>
+          <li>Quality Assurance jobs assigned to QA Officer</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="ct">Performance & Automation</div>
+        <ul>
+          <li>1-hour disk cache — fast responses after warmup</li>
+          <li>Cloud Scheduler warms cache every 30 minutes automatically</li>
+          <li>Stale-while-revalidate — always serve instantly, refresh in background</li>
+          <li>"Refresh now" button triggers immediate background refresh</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <h3 class="sh">Technology Stack</h3>
+      <table class="doc-table">
+        <thead><tr><th>Category</th><th>Technology</th></tr></thead>
+        <tbody>
+          <tr><td>Framework</td><td>Next.js 16 (App Router)</td></tr>
+          <tr><td>Language</td><td>TypeScript 5</td></tr>
+          <tr><td>Styling</td><td>Tailwind CSS v4</td></tr>
+          <tr><td>UI Library</td><td>React 19</td></tr>
+          <tr><td>Data Source</td><td>SimPRO REST API v1.0</td></tr>
+          <tr><td>Cache Storage</td><td>/tmp JSON files (OS temp dir)</td></tr>
+          <tr><td>Hosting</td><td>Google Cloud Run</td></tr>
+          <tr><td>Region</td><td>australia-southeast1 (Sydney)</td></tr>
+          <tr><td>Build</td><td>Google Cloud Build + Docker</td></tr>
+          <tr><td>Scheduler</td><td>Google Cloud Scheduler</td></tr>
+        </tbody>
+      </table>
+
+      <div class="hbox info" style="margin-top:10px;">
+        <div class="hbox-title">Live Site</div>
+        <p>Production URL:<br><code>https://bryan-technical-afss-712513641417.australia-southeast1.run.app</code></p>
+      </div>
+
+      <div class="hbox tip" style="margin-top:8px;">
+        <div class="hbox-title">GCP Project</div>
+        <p>Project ID: <code>buoyant-purpose-475203-t9</code><br>
+        Service name: <code>bryan-technical-afss</code><br>
+        Region: <code>australia-southeast1</code></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ PAGE 4: DASHBOARD — TECH TEAM WORKS ══════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="pg-title"><span class="red-bar"></span>Dashboard — Tech Team Works</div>
+    <div class="pg-meta"><span class="pg-section">Section 2</span><span class="pg-num">Page 4</span></div>
+  </div>
+
+  <p class="lead">The main dashboard table shows job counts, estimated hours, and invoice amounts broken down by status row and company column. All numbers update automatically from SimPRO.</p>
+
+  <div class="sec-div">Status Rows</div>
+
+  <table class="doc-table" style="margin-bottom:14px;">
+    <thead><tr><th style="width:36px;">Colour</th><th style="width:200px;">Row Name</th><th>Condition</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="swatch" style="background:#16a34a;"></span></td>
+        <td><strong>Scheduled Awaiting to be Done</strong></td>
+        <td>Job has a confirmed scheduled date in SimPRO</td>
+        <td>Date sourced from schedule blocks or job detail fields</td>
+      </tr>
+      <tr>
+        <td><span class="swatch" style="background:#2563eb;"></span></td>
+        <td><strong>Awaiting Client Info</strong></td>
+        <td>Status Name contains "client" or "awaiting"</td>
+        <td>Pending jobs stuck waiting on customer action</td>
+      </tr>
+      <tr>
+        <td><span class="swatch" style="background:#ca8a04;"></span></td>
+        <td><strong>Tentative Awaiting Scheduling</strong></td>
+        <td>Pending job with no confirmed schedule date</td>
+        <td>Default bucket for unscheduled CFSP audit jobs</td>
+      </tr>
+      <tr>
+        <td><span class="swatch" style="background:#6b7280;"></span></td>
+        <td><strong>Attendance Complete / Results To Be Released</strong></td>
+        <td>Stage = Progress (non-AE Evac), or status name contains complete/released/attendance</td>
+        <td>AE Evac Progress-stage jobs treated as Scheduled, not Complete</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="two-col">
+    <div>
+      <div class="sec-div">Month Filter</div>
+      <p class="body">The dropdown (top-right) filters all status rows to only show jobs whose <strong>scheduled date</strong> falls in the selected month. Selecting a month also includes the <strong>previous month</strong> in results (e.g. selecting June shows May + June combined). Defaults to "All".</p>
+
+      <h3 class="sh">Total Backlog Row</h3>
+      <p class="body">The "Total Backlog as at end of period" row sums every job across all status rows and all three companies — regardless of the month filter.</p>
+
+      <div class="hbox warn" style="margin-top: 10px;">
+        <div class="hbox-title">AE Evac Special Rule</div>
+        <p>AE Evac (company 10) uses the <strong>Progress stage</strong> to mean "booked" rather than "attendance done." Progress jobs for AE Evac are placed in <strong>Scheduled</strong> if they have a date, or <strong>Tentative</strong> if they do not — not in the Complete row like all other companies.</p>
+      </div>
+    </div>
+    <div>
+      <div class="sec-div">Loading & Partial Data States</div>
+      <p class="body">The dashboard uses a <strong>progressive loading</strong> strategy — each of the 6 company/stage combinations renders as soon as its data arrives, rather than waiting for all 6.</p>
+
+      <div class="card" style="margin-top:8px;">
+        <div class="ct">Loading Indicators</div>
+        <ul>
+          <li><strong>Loading…</strong> (blue, top bar) — fetches are still in flight</li>
+          <li><strong>Refreshing schedule data…</strong> (amber) — data arrived but schedule enrichment is still running in background</li>
+          <li><strong>— dashes</strong> in Scheduled & Tentative rows — enrichment not yet complete; correct split unknown until schedule data is ready</li>
+          <li><strong>Updated: HH:MM:SS</strong> — timestamp of the last successful data fetch</li>
+        </ul>
+      </div>
+
+      <div class="hbox tip" style="margin-top:8px;">
+        <div class="hbox-title">Normal Operation</div>
+        <p>With the cache warm (Cloud Scheduler runs every 30 min), the dashboard loads with correct numbers in <strong>under 2 seconds</strong>. The dashes only appear on a cold cache (new deploy or instance restart).</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ PAGE 5: TEAM SUPPLY & TECH SUPPORT ══════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="pg-title"><span class="red-bar"></span>Dashboard — Team Supply & Tech Support Works</div>
+    <div class="pg-meta"><span class="pg-section">Section 3</span><span class="pg-num">Page 5</span></div>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <div class="sec-div">Technical Team Supply</div>
+      <p class="body">Shows the remaining billable supply hours for each of the three AFSS auditors for the <strong>current calendar month</strong>.</p>
+
+      <table class="doc-table">
+        <thead><tr><th>Column</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>May (current month)</td><td>Remaining working days × 8 hrs</td></tr>
+          <tr><td>Total Supply Hours</td><td>Same — matches the SimPRO "end of period" concept</td></tr>
+          <tr><td>Roles</td><td>Each auditor's primary function description</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sh">Working Days Calculation</h3>
+      <div class="card">
+        <div class="ct">Remaining Days Logic</div>
+        <ul>
+          <li>Before 3:00 PM today → today counts as a remaining day</li>
+          <li>From 3:00 PM onwards → today is excluded (day is considered done)</li>
+          <li>Weekends (Sat/Sun) are never counted</li>
+          <li>Counts from start date through the last day of the current month</li>
+        </ul>
+      </div>
+
+      <h3 class="sh">Leave Deduction</h3>
+      <p class="body">Leave is sourced from the SimPRO schedule API. Activity blocks with reference ID <strong>1</strong> (Annual Leave) or <strong>2</strong> (Sick/Personal Leave) are detected and the note at the bottom of the table lists any leave for today or upcoming in the current month.</p>
+
+      <div class="hbox info" style="margin-top:8px;">
+        <div class="hbox-title">Leave Data Source</div>
+        <p>The <code>/api/leave</code> endpoint scans all weekdays of the current month plus 7 days ahead (to catch pre-booked upcoming leave), fetching schedule blocks in parallel for speed.</p>
+      </div>
+    </div>
+    <div>
+      <div class="sec-div">Technical Support Works</div>
+      <p class="body">Three columns of automated statistics, each sourced live from SimPRO with a 1-hour cache.</p>
+
+      <div class="card">
+        <div class="ct">Other Billable Work Scheduled to Tech Teams</div>
+        <ul>
+          <li>Rate: $100 per hour</li>
+          <li>Date range: <strong>Today → end of current month</strong> (rolling daily)</li>
+          <li>Scans the SimPRO schedule day-by-day for job-type blocks</li>
+          <li>Staff: Josh Roger, Muhammad Soban, Ryan Gordon + Tentative placeholders</li>
+          <li><strong>Excludes</strong> CFSP audit jobs (tech ID 1126) and "system testing" tagged jobs</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="ct">Invested Time (Training / Non-Billable)</div>
+        <ul>
+          <li>Rate: $100 per hour</li>
+          <li>Date range: <strong>Today → end of current month</strong></li>
+          <li>Finds customers with jobs scheduled to the team in this period</li>
+          <li>Counts all pending SimPRO jobs belonging to those customers</li>
+          <li>Represents pending workload of clients the team is actively serving</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="ct">Quality Assurance — Overall Total in SimPRO</div>
+        <ul>
+          <li>Rate: $100 per hour</li>
+          <li><strong>No date filter</strong> — shows full current QA workload</li>
+          <li>All Pending + Progress jobs in company 1</li>
+          <li>Filtered to jobs assigned to "A Quality Assurance Officer" technician</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ PAGE 6: SIMPRO INTEGRATION ══════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="pg-title"><span class="red-bar"></span>SimPRO Integration & Data Logic</div>
+    <div class="pg-meta"><span class="pg-section">Section 4</span><span class="pg-num">Page 6</span></div>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <div class="sec-div">CFSP Filter & Job Classification</div>
+      <p class="body">A job qualifies as a CFSP audit job if technician ID <code>1126</code> ("A CFSP ONLY") is assigned to it. This filter applies to companies 1 and 10. Company 8 (CHUBB/AFAC) returns all jobs without filtering.</p>
+
+      <h3 class="sh">Scheduled Date Detection</h3>
+      <p class="body">A job is classified as "Scheduled" if any of these data points exist:</p>
+      <table class="doc-table">
+        <thead><tr><th>Priority</th><th>Source</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>1st</td><td>Schedule blocks API</td><td>Per-job schedule blocks — most accurate, includes actual booking date</td></tr>
+          <tr><td>2nd</td><td>Job detail fields</td><td>Checks <code>Scheduled</code>, <code>DateScheduled</code>, <code>ScheduledDate</code>, <code>DateBooked</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sh" style="margin-top:10px;">Calculation Defaults</h3>
+      <table class="doc-table">
+        <thead><tr><th>Field</th><th>Primary Source</th><th>Default if Missing</th></tr></thead>
+        <tbody>
+          <tr><td>Estimated Hours</td><td><code>Totals.ResourcesCost.LaborHours.Estimate</code></td><td>2 hours</td></tr>
+          <tr><td>Invoice Amount</td><td><code>Total.ExTax</code></td><td>$330</td></tr>
+          <tr><td>AE Evac rate</td><td>Header label only</td><td>$385/hour</td></tr>
+        </tbody>
+      </table>
+
+      <div class="hbox warn" style="margin-top:10px;">
+        <div class="hbox-title">Rate Limiting</div>
+        <p>SimPRO enforces API rate limits (HTTP 429). All API calls use <strong>exponential backoff</strong> with up to 8 retry attempts. Initial retry delay is 1 second, doubling each attempt (1s → 2s → 4s → 8s…). Concurrent requests are capped at <strong>10 per pool</strong> to reduce 429 frequency.</p>
+      </div>
+    </div>
+    <div>
+      <div class="sec-div">Job Enrichment Pipeline</div>
+      <p class="body">Raw job list data from SimPRO only contains basic fields. The enrichment pipeline adds site details, confirmed schedule dates, and customer group classification per job.</p>
+
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Fetch job list (pages 1–10 in parallel)</div>
+          <div class="step-desc">Fetches up to 2,500 jobs per company/stage. Filters to CFSP tech ID 1126 (except company 8).</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Parallel enrichment — 4 streams at concurrency 10</div>
+          <div class="step-desc">
+            <strong>Details:</strong> <code>/jobs/{id}</code> — labour hours, status, all fields<br>
+            <strong>Sites:</strong> <code>/sites/{id}</code> — site name and address<br>
+            <strong>Schedules:</strong> <code>/schedules/?JobID={id}</code> — confirmed date + hours<br>
+            <strong>Customers:</strong> <code>/customers/{segment}/{id}</code> — customer group
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Merge & write cache</div>
+          <div class="step-desc">Enriched jobs are merged with <code>_site</code>, <code>_scheduledDate</code>, <code>_scheduledHours</code>, and <code>_customerGroup</code> fields, then written to <code>/tmp</code> as JSON.</div>
+        </div>
+      </div>
+
+      <div class="hbox tip" style="margin-top:6px;">
+        <div class="hbox-title">Enrichment Time</div>
+        <p>Enrichment takes <strong>30–160 seconds</strong> per company/stage depending on job count and SimPRO API speed. For 85 jobs (company 1 Pending), expect ~45 seconds. This only occurs on a cold cache — normal operation serves cached data instantly.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ PAGE 7: API REFERENCE ══════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="pg-title"><span class="red-bar"></span>API Reference</div>
+    <div class="pg-meta"><span class="pg-section">Section 5</span><span class="pg-num">Page 7</span></div>
+  </div>
+
+  <div class="sec-div">All Endpoints</div>
+  <table class="doc-table" style="margin-bottom:14px;">
+    <thead><tr><th style="width:50px;">Method</th><th style="width:260px;">Endpoint</th><th style="width:60px;">Cache TTL</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="method get">GET</span></td>
+        <td><code>/api/data?company=N&amp;stage=S</code></td>
+        <td>1 hour</td>
+        <td>Job list for one company/stage. Returns enriched JSON. Serves cache if fresh.</td>
+      </tr>
+      <tr>
+        <td><span class="method get">GET</span></td>
+        <td><code>/api/data?company=N&amp;stage=S&amp;force=1</code></td>
+        <td>—</td>
+        <td>Force refresh. Returns partial data immediately with <code>X-Partial: 1</code>, triggers background re-enrichment.</td>
+      </tr>
+      <tr>
+        <td><span class="method get">GET</span></td>
+        <td><code>/api/leave</code></td>
+        <td>1 hour</td>
+        <td>Leave schedule for all 3 team members for the current month. Returns grouped consecutive leave ranges.</td>
+      </tr>
+      <tr>
+        <td><span class="method get">GET</span></td>
+        <td><code>/api/leave?force=1</code></td>
+        <td>—</td>
+        <td>Force refresh leave cache. Scans SimPRO schedules for current month + 7 days ahead.</td>
+      </tr>
+      <tr>
+        <td><span class="method get">GET</span></td>
+        <td><code>/api/tech-support</code></td>
+        <td>1 hour</td>
+        <td>Technical Support Works stats (other billable, invested time, QA). Returns 3 stat objects.</td>
+      </tr>
+      <tr>
+        <td><span class="method get">GET</span></td>
+        <td><code>/api/tech-support?force=1</code></td>
+        <td>—</td>
+        <td>Force refresh tech-support cache. Returns stale immediately, refreshes in background.</td>
+      </tr>
+      <tr>
+        <td><span class="method get">GET</span></td>
+        <td><code>/api/warmup</code></td>
+        <td>—</td>
+        <td>Pre-warms all caches: 6 job combos sequentially + leave + tech-support in parallel. Max 300s.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="two-col">
+    <div>
+      <div class="sec-div">Enriched Job Response Fields</div>
+      <table class="doc-table">
+        <thead><tr><th>Field</th><th>Source</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>_site</code></td><td>Sites API</td><td>Full site object (name, address)</td></tr>
+          <tr><td><code>_scheduledDate</code></td><td>Schedules API</td><td>ISO date of first confirmed schedule block</td></tr>
+          <tr><td><code>_scheduledHours</code></td><td>Schedules API</td><td>Total hours across all schedule blocks</td></tr>
+          <tr><td><code>_customerGroup</code></td><td>Customers API</td><td>Customer group name (e.g. "Government")</td></tr>
+          <tr><td><code>_company</code></td><td>Dashboard</td><td>Company ID added client-side (1, 8, or 10)</td></tr>
+        </tbody>
+      </table>
+
+      <div class="hbox red" style="margin-top:8px;">
+        <div class="hbox-title">X-Partial: 1 Header</div>
+        <p>When the response contains jobs <strong>not yet enriched</strong> with schedule, site, and customer data, the API returns this header. The dashboard detects it and automatically retries every <strong>5 seconds</strong> until the header is absent and full data is available.</p>
+      </div>
+    </div>
+    <div>
+      <div class="sec-div">Leave API Response Shape</div>
+      <div class="code-block">
+<span class="comment">// Array — one entry per team member</span>
+[
+  {
+    <span class="key">"id"</span>:   <span class="val">1581</span>,
+    <span class="key">"name"</span>: <span class="str">"Muhammad Soban"</span>,
+    <span class="key">"role"</span>: <span class="str">"Primary APFS"</span>,
+    <span class="key">"monthlyHours"</span>: <span class="val">32</span>,
+    <span class="key">"leave"</span>: [
+      { <span class="key">"from"</span>: <span class="str">"2026-05-04"</span>, <span class="key">"to"</span>: <span class="str">"2026-05-18"</span> }
+    ]
+  },
+  <span class="comment">// ... Ryan Gordon, Josh Roger</span>
+]</div>
+
+      <div class="sec-div" style="margin-top:8px;">Tech Support API Response Shape</div>
+      <div class="code-block">
+{
+  <span class="key">"otherBillable"</span>: {
+    <span class="key">"jobs"</span>: <span class="val">10</span>, <span class="key">"hours"</span>: <span class="val">17.75</span>, <span class="key">"amount"</span>: <span class="val">1775</span>
+  },
+  <span class="key">"investedTime"</span>: {
+    <span class="key">"jobs"</span>: <span class="val">37</span>, <span class="key">"hours"</span>: <span class="val">70.58</span>, <span class="key">"amount"</span>: <span class="val">7058</span>
+  },
+  <span class="key">"qualityAssurance"</span>: {
+    <span class="key">"jobs"</span>: <span class="val">4</span>, <span class="key">"hours"</span>: <span class="val">8.0</span>, <span class="key">"amount"</span>: <span class="val">800</span>
+  }
+}</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ PAGE 8: CACHING STRATEGY ══════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="pg-title"><span class="red-bar"></span>Caching Strategy & Performance</div>
+    <div class="pg-meta"><span class="pg-section">Section 6</span><span class="pg-num">Page 8</span></div>
+  </div>
+
+  <p class="lead">All three data sources (job data, leave, tech-support) use an identical caching pattern: write enriched JSON to <code>/tmp</code> on first fetch, then serve from cache for 1 hour while refreshing in the background when stale.</p>
+
+  <div class="two-col">
+    <div>
+      <div class="sec-div">Cache Storage & TTL</div>
+      <table class="doc-table">
+        <thead><tr><th>Cache</th><th>File</th><th>TTL</th></tr></thead>
+        <tbody>
+          <tr><td>Job data (per combo)</td><td><code>afss-jobs-{co}-{stage}.json</code></td><td>1 hour</td></tr>
+          <tr><td>Leave schedule</td><td><code>afss-leave-cache.json</code></td><td>1 hour</td></tr>
+          <tr><td>Tech Support stats</td><td><code>afss-tech-support-v18-cache.json</code></td><td>1 hour</td></tr>
+        </tbody>
+      </table>
+
+      <div class="hbox warn" style="margin-top:8px;">
+        <div class="hbox-title">Cloud Run Ephemeral Disk</div>
+        <p>The <code>/tmp</code> disk is <strong>wiped when Cloud Run recycles the container</strong> (e.g. on new deployment, idle scale-down, or instance restart). After a wipe, the next user request triggers a cold cache path — the Cloud Scheduler job ensures the cache is re-warmed within 30 minutes.</p>
+      </div>
+
+      <div class="sec-div" style="margin-top:10px;">Stale-While-Revalidate Flow</div>
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Request arrives</div>
+          <div class="step-desc">Check /tmp for existing cache file.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Cache is fresh (age &lt; 1 hour, not partial)</div>
+          <div class="step-desc">Return cached data immediately. No SimPRO call needed.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Cache is stale or partial</div>
+          <div class="step-desc">Return stale/partial data immediately (fast), then trigger background re-enrichment from SimPRO. Next request gets fresh data.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">No cache (cold start)</div>
+          <div class="step-desc">Fetch job list immediately (fast path), return with <code>X-Partial: 1</code>. Background enrichment starts. Dashboard retries every 5 s.</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="sec-div">Cold Cache — What the User Sees</div>
+      <table class="doc-table">
+        <thead><tr><th>Time</th><th>Dashboard State</th></tr></thead>
+        <tbody>
+          <tr><td>0–2s</td><td>Fast-path data arrives — job count and totals visible. Scheduled &amp; Tentative rows show <strong>—</strong></td></tr>
+          <tr><td>2–5s</td><td>All 6 company/stage responses in. "Refreshing schedule data…" amber indicator shows.</td></tr>
+          <tr><td>5–120s</td><td>Dashboard retries every 5 s. Background enrichment is running.</td></tr>
+          <tr><td>30–160s</td><td>Enrichment completes. Dashboard gets full data — correct Scheduled / Tentative split appears.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="sec-div" style="margin-top:10px;">Warmup Endpoint Performance</div>
+      <table class="doc-table">
+        <thead><tr><th>Company / Stage</th><th>Typical Time</th></tr></thead>
+        <tbody>
+          <tr><td>Company 1 — Pending (85 jobs)</td><td>~45–160 s</td></tr>
+          <tr><td>Company 1 — Progress</td><td>~5 s</td></tr>
+          <tr><td>Company 8 — Pending</td><td>~15–65 s</td></tr>
+          <tr><td>Company 8 — Progress</td><td>&lt; 1 s</td></tr>
+          <tr><td>Company 10 — Pending</td><td>&lt; 1 s</td></tr>
+          <tr><td>Company 10 — Progress (123 jobs)</td><td>~52–96 s</td></tr>
+          <tr><td><strong>Total (sequential)</strong></td><td><strong>~2–5 min</strong></td></tr>
+        </tbody>
+      </table>
+
+      <div class="hbox tip" style="margin-top:8px;">
+        <div class="hbox-title">Why Sequential?</div>
+        <p>Company/stage combos are warmed one-at-a-time to avoid hammering SimPRO with 60+ concurrent API calls (which causes heavy 429 rate-limiting and slows everything down). Leave and tech-support caches are warmed in parallel alongside the sequential job warmup.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ PAGE 9: TEAM & COMPANIES ══════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="pg-title"><span class="red-bar"></span>Team Members & Companies</div>
+    <div class="pg-meta"><span class="pg-section">Section 7</span><span class="pg-num">Page 9</span></div>
+  </div>
+
+  <div class="sec-div">AFSS Auditor Team</div>
+  <table class="doc-table" style="margin-bottom:16px;">
+    <thead><tr><th>Name</th><th>SimPRO Staff ID</th><th>Role</th><th>Leave Tracking</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Muhammad Soban</strong></td>
+        <td><code>1581</code></td>
+        <td>Primary APFS</td>
+        <td>Annual Leave (ref 1) + Sick/Personal (ref 2)</td>
+      </tr>
+      <tr>
+        <td><strong>Ryan Gordon</strong></td>
+        <td><code>15</code></td>
+        <td>Mixed of Technical Support Works and Secondary APFS</td>
+        <td>Annual Leave (ref 1) + Sick/Personal (ref 2)</td>
+      </tr>
+      <tr>
+        <td><strong>Josh Roger</strong></td>
+        <td><code>1753</code></td>
+        <td>Estimation / Office Management Time ETC</td>
+        <td>Annual Leave (ref 1) + Sick/Personal (ref 2)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="sec-div">Companies & Job Classification</div>
+  <table class="doc-table" style="margin-bottom:16px;">
+    <thead><tr><th>Dashboard Column</th><th>Company ID</th><th>SimPRO Company</th><th>Filter Applied</th><th>Default Rate</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>RM AFSS</strong></td>
+        <td><code>1</code></td>
+        <td>Company 1</td>
+        <td>Jobs with tech ID 1126 (A CFSP ONLY)</td>
+        <td>$330 / job or actual ExTax</td>
+      </tr>
+      <tr>
+        <td><strong>CHUBB/AFAC AFSS</strong></td>
+        <td><code>8</code></td>
+        <td>Company 8</td>
+        <td>All jobs (no technician filter)</td>
+        <td>$330 / job or actual ExTax</td>
+      </tr>
+      <tr>
+        <td><strong>AE Evac Procedure Audits</strong></td>
+        <td><code>10</code></td>
+        <td>Company 10</td>
+        <td>Jobs with tech ID 1126 (A CFSP ONLY)</td>
+        <td>$385 / hour (shown in header)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="two-col">
+    <div>
+      <div class="sec-div">Stages Fetched per Company</div>
+      <p class="body">Each company fetches two job stages from SimPRO, giving <strong>6 total combinations</strong> that are cached independently.</p>
+      <table class="doc-table">
+        <thead><tr><th>Stage</th><th>Dashboard meaning</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill blue">Pending</span></td><td>Jobs yet to be attended — Scheduled, Tentative, or Awaiting Client Info</td></tr>
+          <tr><td><span class="pill green">Progress</span></td><td>Jobs attended / in progress — Attendance Complete for all except AE Evac</td></tr>
+        </tbody>
+      </table>
+
+      <div class="hbox info" style="margin-top:8px;">
+        <div class="hbox-title">AE Evac Exception</div>
+        <p>AE Evac uses <strong>Progress</strong> to mean "booking confirmed" rather than "attendance done." The dashboard routes AE Evac Progress jobs to Scheduled (if date exists) or Tentative (if no date), not to the Complete row.</p>
+      </div>
+    </div>
+    <div>
+      <div class="sec-div">SimPRO API Connection</div>
+      <p class="body">All data is fetched from the SimPRO REST API v1.0 using a Bearer token stored as a Cloud Run secret environment variable.</p>
+
+      <div class="card">
+        <div class="ct">API Usage Pattern</div>
+        <ul>
+          <li>Job list: <code>GET /api/v1.0/companies/{id}/jobs/?pageSize=250&amp;columns=…</code></li>
+          <li>Job detail: <code>GET /api/v1.0/companies/{id}/jobs/{jobId}</code></li>
+          <li>Schedules: <code>GET /api/v1.0/companies/{id}/schedules/?JobID={id}</code></li>
+          <li>Sites: <code>GET /api/v1.0/companies/{id}/sites/{siteId}</code></li>
+          <li>Customers: <code>GET /api/v1.0/companies/{id}/customers/{segment}/{id}</code></li>
+          <li>Staff: <code>GET /api/v1.0/companies/1/staff/?pageSize=250&amp;columns=ID,Name</code></li>
+          <li>Day schedules: <code>GET /api/v1.0/companies/1/schedules/?Date=YYYY-MM-DD</code></li>
+        </ul>
+      </div>
+
+      <div class="hbox warn" style="margin-top:8px;">
+        <div class="hbox-title">Token Note</div>
+        <p>The <code>SIMPRO_TOKEN</code> env var is stripped of any leading BOM characters (<code>﻿</code>) and whitespace on startup to avoid authentication failures from copy-paste artifacts.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ PAGE 10: DEPLOYMENT ══════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="pg-title"><span class="red-bar"></span>Deployment Guide</div>
+    <div class="pg-meta"><span class="pg-section">Section 8</span><span class="pg-num">Page 10</span></div>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <div class="sec-div">Cloud Run Setup</div>
+      <table class="doc-table" style="margin-bottom:10px;">
+        <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Service name</td><td><code>bryan-technical-afss</code></td></tr>
+          <tr><td>Region</td><td><code>australia-southeast1</code></td></tr>
+          <tr><td>GCP Project</td><td><code>buoyant-purpose-475203-t9</code></td></tr>
+          <tr><td>Project Number</td><td><code>712513641417</code></td></tr>
+          <tr><td>Max duration</td><td>300 s (warmup endpoint)</td></tr>
+          <tr><td>Build method</td><td>Dockerfile via Cloud Build</td></tr>
+        </tbody>
+      </table>
+
+      <div class="sec-div">Deploy Command (PowerShell)</div>
+      <div class="code-block">
+<span class="kw">gcloud</span> run deploy bryan-technical-afss <span class="val">`</span>
+  --source . <span class="val">`</span>
+  --region australia-southeast1 <span class="val">`</span>
+  --project buoyant-purpose-475203-t9 <span class="val">`</span>
+  --quiet</div>
+
+      <div class="hbox warn" style="margin-top:6px;">
+        <div class="hbox-title">Build Time</div>
+        <p>Cloud Build typically takes <strong>4–8 minutes</strong> to build the Docker image and deploy the new revision. The old revision stays live until the new one passes health checks.</p>
+      </div>
+
+      <div class="sec-div" style="margin-top:10px;">Post-Deploy Cache Warmup</div>
+      <p class="body">Deploying a new revision creates a fresh container — the <code>/tmp</code> cache is empty. Run the warmup command immediately after deploy:</p>
+      <div class="code-block">
+<span class="comment"># PowerShell — takes 2–5 minutes</span>
+Invoke-WebRequest <span class="val">`</span>
+  -Uri <span class="str">"https://bryan-technical-afss-712513641417</span>
+<span class="str">.australia-southeast1.run.app/api/warmup"</span> <span class="val">`</span>
+  -TimeoutSec 310</div>
+
+      <p class="body" style="margin-top:6px;">All 6 company/stage combos, leave, and tech-support will be cached and ready before the first user visits the dashboard.</p>
+    </div>
+    <div>
+      <div class="sec-div">Post-Deploy Checklist</div>
+
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Deploy completes (gcloud run deploy)</div>
+          <div class="step-desc">Confirm the new revision URL appears and "Routing traffic…done" is shown.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Run warmup endpoint</div>
+          <div class="step-desc">Use the Invoke-WebRequest command with -TimeoutSec 310. Verify all 6 results show <code>"ok": true</code>.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Open the dashboard</div>
+          <div class="step-desc">Navigate to <code>/dashboard</code> — should load with correct data in under 2 seconds, no amber "Refreshing" indicator.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Verify Scheduled row shows real numbers</div>
+          <div class="step-desc">If the Scheduled and Tentative rows show actual numbers (not dashes), enrichment is complete and the cache is warm.</div>
+        </div>
+      </div>
+
+      <div class="sec-div" style="margin-top:10px;">TypeScript Check Before Deploying</div>
+      <p class="body">Always run the type checker before deploying to catch compile errors early:</p>
+      <div class="code-block">
+<span class="comment"># In the project directory</span>
+<span class="kw">npx</span> tsc --noEmit
+<span class="comment"># No output = no errors. Safe to deploy.</span></div>
+
+      <div class="hbox tip" style="margin-top:8px;">
+        <div class="hbox-title">Local Development</div>
+        <p>Run <code>npm run dev</code> to start the local server on <code>http://localhost:3000</code>. Set <code>SIMPRO_BASE_URL</code> and <code>SIMPRO_TOKEN</code> in a <code>.env.local</code> file. The local dev cache also writes to <code>/tmp</code>.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ PAGE 11: AUTOMATION & CONFIG ══════════════════ -->
+<div class="page">
+  <div class="page-header">
+    <div class="pg-title"><span class="red-bar"></span>Automation & Configuration</div>
+    <div class="pg-meta"><span class="pg-section">Section 9</span><span class="pg-num">Page 11</span></div>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <div class="sec-div">Cloud Scheduler — Automatic Cache Warming</div>
+      <p class="body">A Cloud Scheduler job (<code>afss-warmup-job</code>) automatically hits the warmup endpoint every 30 minutes, ensuring the cache is always fresh before the 1-hour TTL expires.</p>
+
+      <table class="doc-table" style="margin-bottom:10px;">
+        <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Job name</td><td><code>afss-warmup-job</code></td></tr>
+          <tr><td>Schedule</td><td><code>*/30 * * * *</code> (every 30 min, UTC)</td></tr>
+          <tr><td>Region</td><td><code>australia-southeast1</code></td></tr>
+          <tr><td>Target URL</td><td><code>/api/warmup</code></td></tr>
+          <tr><td>HTTP method</td><td>GET</td></tr>
+          <tr><td>Attempt deadline</td><td>310 seconds</td></tr>
+          <tr><td>State</td><td>ENABLED</td></tr>
+        </tbody>
+      </table>
+
+      <div class="hbox tip" style="margin-top:4px;">
+        <div class="hbox-title">Why 30 Minutes?</div>
+        <p>The cache TTL is 1 hour. Warming every 30 minutes gives a comfortable buffer — even if one warmup run is slow or fails, the cache is still valid from the previous successful run. Users almost never see the slow enrichment path.</p>
+      </div>
+
+      <div class="sec-div" style="margin-top:10px;">Environment Variables</div>
+      <div class="env-header">
+        <div style="width:42%;">Variable</div>
+        <div style="flex:1;">Description</div>
+      </div>
+      <div class="env-row"><div class="ev">SIMPRO_BASE_URL</div><div class="ed">SimPRO instance base URL — e.g. <code>https://example.simpro.co</code></div></div>
+      <div class="env-row"><div class="ev">SIMPRO_TOKEN</div><div class="ed">SimPRO API Bearer token. Leading BOM characters are stripped automatically on startup.</div></div>
+
+      <div class="hbox red" style="margin-top:10px;">
+        <div class="hbox-title">Security</div>
+        <p>Both variables are stored as <strong>Cloud Run environment variables</strong> — never committed to the repository or included in the Docker image. To update them, use the GCP Console or <code>gcloud run services update</code> with <code>--set-env-vars</code>.</p>
+      </div>
+    </div>
+    <div>
+      <div class="sec-div">Project File Structure</div>
+      <div class="tree">
+<span class="folder">afss-backlog/</span>
+├── <span class="folder">app/</span>                  <span class="comment"># Next.js App Router</span>
+│   ├── <span class="folder">api/</span>
+│   │   ├── <span class="folder">data/</span>         <span class="comment"># Job data endpoint</span>
+│   │   │   └── <span class="file">route.ts</span>
+│   │   ├── <span class="folder">leave/</span>        <span class="comment"># Leave schedule endpoint</span>
+│   │   │   └── <span class="file">route.ts</span>
+│   │   ├── <span class="folder">tech-support/</span> <span class="comment"># Tech Support Works endpoint</span>
+│   │   │   └── <span class="file">route.ts</span>
+│   │   └── <span class="folder">warmup/</span>       <span class="comment"># Cache pre-warm endpoint</span>
+│   │       └── <span class="file">route.ts</span>
+│   ├── <span class="folder">dashboard/</span>        <span class="comment"># Dashboard page</span>
+│   │   └── <span class="file">page.tsx</span>      <span class="comment"># Main dashboard UI</span>
+│   ├── <span class="folder">lib/</span>
+│   │   └── <span class="file">simpro.ts</span>     <span class="comment"># SimPRO API client + cache</span>
+│   ├── <span class="file">layout.tsx</span>        <span class="comment"># Root layout</span>
+│   └── <span class="file">page.tsx</span>          <span class="comment"># Backlog list page</span>
+├── <span class="file">Dockerfile</span>            <span class="comment"># Cloud Run container build</span>
+├── <span class="file">next.config.ts</span>        <span class="comment"># Next.js config</span>
+├── <span class="file">tsconfig.json</span>         <span class="comment"># TypeScript config</span>
+└── <span class="file">package.json</span>
+      </div>
+
+      <h3 class="sh" style="margin-top:10px;">Key Source Files</h3>
+      <table class="doc-table">
+        <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>app/lib/simpro.ts</code></td><td>SimPRO API client, pooled fetching, disk cache read/write, warmAll()</td></tr>
+          <tr><td><code>app/api/data/route.ts</code></td><td>Job data API — smart cache, fast path, X-Partial header</td></tr>
+          <tr><td><code>app/api/leave/route.ts</code></td><td>Leave detection — scans SimPRO schedules, groups consecutive dates</td></tr>
+          <tr><td><code>app/api/tech-support/route.ts</code></td><td>Tech Support Works — 3 independent stats from SimPRO schedule &amp; jobs APIs</td></tr>
+          <tr><td><code>app/api/warmup/route.ts</code></td><td>Orchestrates all cache warming — called by Cloud Scheduler every 30 min</td></tr>
+          <tr><td><code>app/dashboard/page.tsx</code></td><td>Full dashboard UI — progressive loading, partial detection, auto-retry</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

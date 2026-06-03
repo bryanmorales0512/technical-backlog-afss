@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11pt; color: #1a1a1a; line-height: 1.55; background: #fff; }
+  .cover { page-break-after: always; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; background: #1e3a5f; color: #fff; text-align: center; padding: 40px; }
+  .cover h1 { font-size: 28pt; font-weight: 800; letter-spacing: 1px; margin-bottom: 12px; }
+  .cover h2 { font-size: 16pt; font-weight: 400; color: #93c5fd; margin-bottom: 30px; }
+  .cover .meta { font-size: 10pt; color: #cbd5e1; }
+  .cover .badge { display: inline-block; background: #2563eb; color: #fff; border-radius: 4px; padding: 4px 14px; font-size: 10pt; margin: 6px 4px; }
+  .toc { page-break-after: always; padding: 18px 24px; }
+  .toc h2 { font-size: 16pt; font-weight: 700; color: #1e3a5f; border-bottom: 3px solid #2563eb; padding-bottom: 6px; margin-bottom: 14px; }
+  .toc ol { padding-left: 18px; }
+  .toc li { padding: 3px 0; font-size: 10.5pt; color: #1e3a5f; }
+  .toc li.sub { padding-left: 16px; font-size: 9.5pt; color: #475569; list-style-type: lower-alpha; }
+  section { padding: 16px 24px 10px; page-break-before: always; }
+  section:first-of-type { page-break-before: avoid; }
+  h2.section-title { font-size: 15pt; font-weight: 800; color: #fff; background: #1e3a5f; padding: 8px 14px; border-radius: 4px; margin-bottom: 12px; }
+  h3 { font-size: 11.5pt; font-weight: 700; color: #1e3a5f; margin: 14px 0 7px; border-left: 4px solid #2563eb; padding-left: 8px; }
+  h4 { font-size: 10.5pt; font-weight: 700; color: #334155; margin: 10px 0 4px; }
+  p { margin: 0 0 7px; }
+  ul, ol { margin: 0 0 8px; padding-left: 20px; }
+  li { margin: 2px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 9.5pt; }
+  th { background: #1e3a5f; color: #fff; padding: 6px 8px; text-align: left; font-size: 9.5pt; }
+  td { border: 1px solid #cbd5e1; padding: 5px 8px; vertical-align: top; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  code { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 3px; padding: 1px 4px; font-family: monospace; font-size: 9pt; color: #be185d; }
+  pre { background: #0f172a; color: #e2e8f0; border-radius: 6px; padding: 10px 12px; margin: 7px 0 10px; font-size: 8.5pt; overflow-x: auto; line-height: 1.5; }
+  pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+  .info-box { background: #eff6ff; border-left: 4px solid #2563eb; padding: 8px 12px; margin: 8px 0; border-radius: 0 4px 4px 0; }
+  .warn-box { background: #fefce8; border-left: 4px solid #ca8a04; padding: 8px 12px; margin: 8px 0; border-radius: 0 4px 4px 0; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 8px 0; }
+  .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; }
+  .card h4 { margin-top: 0; color: #1e3a5f; }
+  .tag { display: inline-block; background: #dbeafe; color: #1e40af; border-radius: 3px; padding: 1px 6px; font-size: 8.5pt; margin: 1px; }
+  .tag.green { background: #dcfce7; color: #166534; }
+  .tag.orange { background: #ffedd5; color: #9a3412; }
+  .footer { position: fixed; bottom: 10px; right: 24px; font-size: 8pt; color: #94a3b8; }
+  .divider { border: none; border-top: 2px solid #e2e8f0; margin: 12px 0; }
+</style>
+</head>
+<body>
+
+<!-- COVER PAGE -->
+<div class="cover">
+  <div style="font-size:11pt;color:#93c5fd;margin-bottom:16px;letter-spacing:2px;text-transform:uppercase;">AFSS Backlog Management System</div>
+  <h1>System Documentation<br/>& Workflow Guide</h1>
+  <h2>Technical Reference — Version 1.1</h2>
+  <div class="meta" style="margin-bottom:24px;">
+    <div style="margin-bottom:8px;font-size:11pt;">Prepared for: <strong style="color:#fff;">Redmen Fire / Adair Fire Safety Services</strong></div>
+    <div>Date: May 2026</div>
+  </div>
+  <div>
+    <span class="badge">Next.js 16</span>
+    <span class="badge">Google Cloud Run</span>
+    <span class="badge">SimPRO API</span>
+    <span class="badge">TypeScript 5</span>
+  </div>
+</div>
+
+<!-- TABLE OF CONTENTS -->
+<div class="toc">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li>System Overview</li>
+    <li>Architecture</li>
+    <li>Pages &amp; Features
+      <ol>
+        <li class="sub">Backlog Page</li>
+        <li class="sub">Dashboard Page</li>
+        <li class="sub">Progress Page</li>
+      </ol>
+    </li>
+    <li>API Endpoints
+      <ol>
+        <li class="sub">/api/data — Job Backlog</li>
+        <li class="sub">/api/leave — Team Leave</li>
+        <li class="sub">/api/tech-support — Technical Support Works</li>
+        <li class="sub">/api/afac-prospect — AFAC Prospect Demand</li>
+        <li class="sub">/api/warmup — Cache Warmup</li>
+      </ol>
+    </li>
+    <li>Caching Strategy</li>
+    <li>Dashboard Calculations</li>
+    <li>SimPRO API Integration Notes</li>
+    <li>Deployment &amp; Infrastructure</li>
+    <li>Environment Variables</li>
+    <li>Known Behaviours &amp; Quirks</li>
+  </ol>
+</div>
+
+<!-- SECTION 1: SYSTEM OVERVIEW -->
+<section>
+  <h2 class="section-title">1. System Overview</h2>
+  <p>The <strong>AFSS Backlog Management System</strong> is a real-time operations dashboard built for the Adair Fire Safety Services (AFSS) technical team. It pulls live job data from <strong>SimPRO</strong> (field service management software) and presents it as a structured capacity-planning dashboard.</p>
+
+  <h3>Purpose</h3>
+  <ul>
+    <li>Track the full job backlog across three companies: <strong>RM AFSS</strong> (Company 1), <strong>CHUBB/AFAC AFSS</strong> (Company 8), and <strong>AE Evac Procedure Audits</strong> (Company 10).</li>
+    <li>Display job status breakdown: Scheduled, Awaiting Client Info, Tentative, and Attendance Complete.</li>
+    <li>Calculate team <strong>Supply vs Demand</strong> in hours and days.</li>
+    <li>Track <strong>Technical Support Works</strong> (Other Billable, Invested Time, Quality Assurance).</li>
+    <li>Estimate future workload from <strong>AFAC Prospect Demand</strong> using last year's schedule data.</li>
+    <li>Show <strong>Technical Team Supply</strong> with leave deductions.</li>
+  </ul>
+
+  <h3>Technology Stack</h3>
+  <table>
+    <tr><th>Layer</th><th>Technology</th><th>Version</th></tr>
+    <tr><td>Frontend Framework</td><td>Next.js (App Router)</td><td>16.2.6</td></tr>
+    <tr><td>UI Language</td><td>TypeScript</td><td>5.x</td></tr>
+    <tr><td>Styling</td><td>Tailwind CSS</td><td>v4</td></tr>
+    <tr><td>Runtime</td><td>React</td><td>19.2.4</td></tr>
+    <tr><td>Hosting</td><td>Google Cloud Run</td><td>australia-southeast1</td></tr>
+    <tr><td>Data Source</td><td>SimPRO REST API</td><td>v1.0</td></tr>
+    <tr><td>PDF Generation</td><td>Puppeteer</td><td>25.x</td></tr>
+  </table>
+</section>
+
+<!-- SECTION 2: ARCHITECTURE -->
+<section>
+  <h2 class="section-title">2. Architecture</h2>
+
+  <h3>High-Level Data Flow</h3>
+  <pre><code>  Browser (Client Component)
+       │
+       │  HTTP fetch every 5 min (or on Refresh)
+       ▼
+  Next.js App Router (Cloud Run)
+       │
+       ├── /api/data          ── reads /tmp cache or fetches SimPRO
+       ├── /api/leave         ── reads /tmp cache or fetches SimPRO
+       ├── /api/tech-support  ── reads /tmp cache or fetches SimPRO
+       └── /api/afac-prospect ── reads /tmp cache or fetches SimPRO
+                │
+                │  Cache miss → SimPRO REST API (redmen.simprosuite.com)
+                ▼
+          /tmp/*.json  (in-memory file cache, 1-hour TTL)
+                ▲
+                │  Google Cloud Scheduler
+       /api/warmup  (fires every 4 minutes)</code></pre>
+
+  <h3>File Structure</h3>
+  <table>
+    <tr><th>Path</th><th>Description</th></tr>
+    <tr><td><code>app/page.tsx</code></td><td>Backlog page — job list by company and stage</td></tr>
+    <tr><td><code>app/dashboard/page.tsx</code></td><td>Dashboard — Supply vs Demand, status breakdown</td></tr>
+    <tr><td><code>app/progress/page.tsx</code></td><td>Progress jobs view</td></tr>
+    <tr><td><code>app/lib/simpro.ts</code></td><td>Core SimPRO fetch + cache + enrichment logic</td></tr>
+    <tr><td><code>app/api/data/route.ts</code></td><td>Job backlog API with partial/warm cache logic</td></tr>
+    <tr><td><code>app/api/leave/route.ts</code></td><td>Team leave detection from schedules</td></tr>
+    <tr><td><code>app/api/tech-support/route.ts</code></td><td>Technical Support Works calculation</td></tr>
+    <tr><td><code>app/api/afac-prospect/route.ts</code></td><td>AFAC Prospect Demand (last-year schedule data)</td></tr>
+    <tr><td><code>app/api/warmup/route.ts</code></td><td>Cache warmup endpoint (triggered by Cloud Scheduler)</td></tr>
+    <tr><td><code>instrumentation.ts</code></td><td>Next.js startup hook — fires warmup on server boot</td></tr>
+  </table>
+
+  <h3>Startup Warmup</h3>
+  <p><code>instrumentation.ts</code> runs once when the Next.js server starts (on Cloud Run container boot). It fires all four warmup functions in the background, so caches are populated before the Cloud Scheduler's first fire after a new deployment.</p>
+
+  <h3>Cache Warmup Scheduler</h3>
+  <p>A <strong>Google Cloud Scheduler</strong> job (<code>afss-cache-warmup</code>) calls <code>GET /api/warmup</code> every <strong>4 minutes</strong>. This ensures caches are always fresh. After a new deployment, <code>instrumentation.ts</code> also warms caches immediately on startup so there is no cold-cache window.</p>
+</section>
+
+<!-- SECTION 3: PAGES & FEATURES -->
+<section>
+  <h2 class="section-title">3. Pages &amp; Features</h2>
+
+  <h3>3a. Backlog Page ( / )</h3>
+  <p>The main backlog view. Shows all Pending and Progress jobs from SimPRO across three companies in a filterable table.</p>
+  <ul>
+    <li><strong>Companies:</strong> REDMEN OPERATION (1), ADAIR OPERATIONS (8), AFAC (8 — same SimPRO company)</li>
+    <li>Columns vary per company — AFAC Pending includes Salesperson and Job Type columns.</li>
+    <li>Filtered to show only jobs assigned to technician <strong>CFSP (ID 1126)</strong> for companies 1 and 10.</li>
+    <li>Company 8 shows all jobs (no technician filter).</li>
+  </ul>
+
+  <h3>3b. Dashboard Page ( /dashboard )</h3>
+  <p>The main planning dashboard. Client-side component that auto-refreshes every <strong>5 minutes</strong>. All data is fetched from the API routes concurrently on load.</p>
+
+  <h4>Top Table — AFSS Audits Backlog</h4>
+  <ul>
+    <li><strong>Total Backlog:</strong> All jobs in any status row (Scheduled + Awaiting + Tentative + Complete without mixed plan type).</li>
+    <li><strong>Scheduled Awaiting to be Done:</strong> Jobs with a <code>_scheduledDate</code> assigned (and not Progress for companies 1/8).</li>
+    <li><strong>Awaiting Client Info:</strong> Jobs without a schedule date and Stage = Pending (non-complete).</li>
+    <li><strong>Tentative Awaiting Scheduling:</strong> Jobs without a scheduled date that are not yet complete.</li>
+    <li><strong>Attendance Complete / Results To Be Released:</strong> Stage = Progress (for companies 1 and 8) or company 10 Progress jobs without a scheduled date.</li>
+  </ul>
+
+  <div class="info-box">
+    <strong>Note on AE Evac (Company 10):</strong> Progress stage = audit is booked/scheduled, not attendance-complete. Company 10 Progress jobs are classified as Scheduled or Tentative depending on whether a schedule date exists.
+  </div>
+
+  <h4>Bottom Left — Technical Team Supply</h4>
+  <ul>
+    <li>Shows Muhammad Soban, Ryan Gordon, Josh Roger with monthly supply hours.</li>
+    <li>Hours = remaining working days × 8, deducting leave days already booked.</li>
+    <li>Leave deduction uses <code>remainingLeaveDays()</code> counting only today onwards (after 3 PM, today is excluded).</li>
+  </ul>
+
+  <h4>Bottom Left — Intercompany Work</h4>
+  <p>Manual input fields (Hours and Amount) for RM, AE, and FIA intercompany work allocations. Values are entered by the user and are not persisted between page refreshes.</p>
+
+  <h4>Bottom Right — Technical Support Works</h4>
+  <p>Three columns pulled from <code>/api/tech-support</code>:</p>
+  <table>
+    <tr><th>Column</th><th>What It Measures</th></tr>
+    <tr><td>Other Billable Work Scheduled to Tech Teams</td><td>Schedule blocks from today → end of month for team members, excluding AFSS-Audit jobs (CFSP tech) and system-testing tagged jobs</td></tr>
+    <tr><td>Invested Time</td><td>Pending jobs for customers who have team members scheduled this month (non-AFSS jobs)</td></tr>
+    <tr><td>Quality Assurance</td><td>Pending + Progress jobs assigned to "A Quality Assurance Officer" staff member</td></tr>
+  </table>
+
+  <h4>Supply vs Demand Tables</h4>
+  <ul>
+    <li><strong>AFSS Audits Supply vs Demand:</strong> Supply = Primary APFS team hours. Demand = sum of Est. Hrs from all backlog jobs (companies 1, 8, 10) + AFAC Prospect Demand hours.</li>
+    <li><strong>Technical Works + Prospect Demand Supply vs Demand:</strong> Supply = non-Primary-APFS team hours. Demand = Technical Support Works total hours.</li>
+    <li><strong>Overall Demand vs Supply:</strong> Total supply hours vs total demand from all backlog jobs.</li>
+  </ul>
+
+  <h4>AFAC Prospect Demand</h4>
+  <p>Shows the schedule rows and hours from the <strong>same calendar period last year</strong> (today last year → end of that month), filtered to AFSS-Audit work only (Muhammad Soban's blocks, excluding REDMEN FIRE internal jobs). Amount = Hours × $100.</p>
+
+  <h3>3c. Progress Page ( /progress )</h3>
+  <p>Shows Progress-stage jobs. Separate view for tracking jobs that are currently in-progress / attendance-complete awaiting results release.</p>
+</section>
+
+<!-- SECTION 4: API ENDPOINTS -->
+<section>
+  <h2 class="section-title">4. API Endpoints</h2>
+
+  <h3>4a. GET /api/data</h3>
+  <p>Returns enriched job list for a given company and stage.</p>
+  <table>
+    <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>company</code></td><td>number</td><td>SimPRO company ID (1, 8, or 10)</td></tr>
+    <tr><td><code>stage</code></td><td>string</td><td>"Pending" or "Progress"</td></tr>
+    <tr><td><code>force</code></td><td>"1" (optional)</td><td>Bypass cache and force a fresh fetch</td></tr>
+  </table>
+
+  <h4>Cache Behaviour</h4>
+  <ul>
+    <li><strong>Fresh cache (age &lt; 1 hour, not partial):</strong> Returns immediately.</li>
+    <li><strong>Stale or partial cache:</strong> Returns cached data immediately + refreshes in background via sequential <code>queueEnrichment()</code>.</li>
+    <li><strong>Cold cache:</strong> Calls <code>fetchCFSPJobs()</code> for a fast partial response (no schedule data), writes partial cache, then queues full enrichment in background. Returns with header <code>X-Partial: 1</code>.</li>
+    <li><strong>X-Partial: 1:</strong> Dashboard retries automatically every 5 seconds until full data arrives.</li>
+  </ul>
+
+  <h4>Enriched Job Fields (added by the system)</h4>
+  <table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>_company</code></td><td>Company ID (added by dashboard client)</td></tr>
+    <tr><td><code>_scheduledDate</code></td><td>Earliest schedule block date for the job</td></tr>
+    <tr><td><code>_scheduledHours</code></td><td>Total hours from all schedule blocks</td></tr>
+    <tr><td><code>_site</code></td><td>Full site detail object</td></tr>
+    <tr><td><code>_customerGroup</code></td><td>Customer group name from customer profile</td></tr>
+  </table>
+
+  <hr class="divider" />
+
+  <h3>4b. GET /api/leave</h3>
+  <p>Returns leave data and monthly supply hours for each team member.</p>
+  <table>
+    <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>force</code></td><td>"1" (optional)</td><td>Force cache refresh</td></tr>
+  </table>
+  <p>Scans SimPRO schedules day-by-day for company 1 using <code>?Date=YYYY-MM-DD</code>, identifying activity blocks with Reference "1" (Annual Leave) or "2" (Sick/Personal Leave) for team member IDs 1581, 15, and 1753.</p>
+  <p>Response includes each team member's <code>leave</code> array of <code>{ from, to }</code> date ranges and <code>monthlyHours</code> (remaining working days × 8).</p>
+
+  <hr class="divider" />
+
+  <h3>4c. GET /api/tech-support</h3>
+  <p>Returns Technical Support Works statistics for the selected month. Accepts optional <code>year</code> and <code>month</code> query params (defaults to current month in AEST).</p>
+  <table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>otherBillable</code></td><td>AFSS cost-centre schedule blocks for the 3 tech team members (today → end of selected month), excluding internal clients</td></tr>
+    <tr><td><code>investedTime</code></td><td>AFSS cost-centre blocks for <strong>Pending-stage</strong> jobs only (internal clients), matching SimPRO's "Job Stage: Pending" filter</td></tr>
+    <tr><td><code>qualityAssurance</code></td><td>Pending + Progress jobs with "A Quality Assurance Officer" assigned</td></tr>
+  </table>
+  <p>Each stat has <code>jobs</code>, <code>hours</code>, and <code>amount</code> (hours × $100). Rate: $100/hr.</p>
+
+  <h4>Team Members Tracked</h4>
+  <p>Ryan Gordon (ID 15), Muhammad Soban (ID 1581), Josh Roger (ID 1753). Schedule blocks for any of these three staff are collected day-by-day from today through end of the selected month.</p>
+
+  <h4>AFSS Cost Centre Filter</h4>
+  <p>Each schedule block must belong to an AFSS cost centre to be counted. Identification uses two complementary methods:</p>
+  <ol>
+    <li><strong>Static known IDs:</strong> 12 hardcoded cost centre IDs (<code>KNOWN_AFSS_CC_IDS</code>) that are always trusted. These include Contracts Annual, Portables types A/B/C, Material Collection, Consultancy – Block Plans, Electrical Detection &amp; Maintenance, Portables Division Income, DATACOM Passive Income, and Ourimbah RE.</li>
+    <li><strong>Name matching:</strong> 38 AFSS cost centre names (<code>AFSS_CC_NAMES</code>) matching SimPRO's "38 selected" cost-centre filter. Names are resolved automatically via the CC name cache (see Section 5).</li>
+  </ol>
+  <p>Blocks matching either method are included. Blocks with no resolvable name and no known ID are excluded.</p>
+
+  <h4>OB vs IT Stage Filter</h4>
+  <table>
+    <tr><th>Column</th><th>Stage Rule</th><th>Client Filter</th></tr>
+    <tr><td>Other Billable (OB)</td><td>Job stage is NOT Complete, Cancelled, or Archived (i.e. In Progress and Pending both count)</td><td>External clients only</td></tr>
+    <tr><td>Invested Time (IT)</td><td>Job stage = <strong>Pending only</strong> — matches SimPRO's "Job Stage: Pending" schedule breakdown filter exactly</td><td>Internal clients only (REDMEN FIRE, Z SAFE OS, ADAIR OPERATION, AFAC)</td></tr>
+  </table>
+
+  <h4>Automated CC Name Resolution</h4>
+  <p>On the first cold build for a given month, the API calls <code>GET /jobs/{id}/sections/{sectionId}?expand=CostCenter</code> for any block whose cost centre ID is not yet in the persistent cache. Results are saved to <code>afss-cc-name-cache-v2.json</code> and reused on all subsequent builds — no manual code changes needed when new AFSS cost centres appear in SimPRO.</p>
+
+  <h4>Debug Endpoints</h4>
+  <table>
+    <tr><th>URL</th><th>What it shows</th></tr>
+    <tr><td><code>?debug=blockccids&amp;year=YYYY&amp;month=M</code></td><td>All unique CC IDs found in schedule blocks, with inKnownList flag</td></tr>
+    <tr><td><code>?debug=excluded&amp;year=YYYY&amp;month=M</code></td><td>Blocks excluded by the CC filter, with job IDs, dates, and staff IDs</td></tr>
+  </table>
+
+  <hr class="divider" />
+
+  <h3>4d. GET /api/afac-prospect</h3>
+  <p>Returns AFAC Prospect Demand data from last year's schedules.</p>
+  <table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>jobs</code></td><td>Count of schedule blocks (SimPRO Results count = sum of Blocks.length)</td></tr>
+    <tr><td><code>hours</code></td><td>Total hours from Soban's AFSS-Audit schedule blocks</td></tr>
+    <tr><td><code>dateFrom</code></td><td>Start date (today's date last year)</td></tr>
+    <tr><td><code>dateTo</code></td><td>End of the same month last year</td></tr>
+    <tr><td><code>costCentreFiltered</code></td><td>Always true — filtered by customer name</td></tr>
+  </table>
+
+  <div class="info-box">
+    <strong>Date window:</strong> If today is 26 May 2026, the window is 26 May 2025 → 31 May 2025. Fetches day-by-day (SimPRO's date range params are silently ignored — only <code>Date=</code> single-day param works).
+  </div>
+
+  <p><strong>Staff filter:</strong> Muhammad Soban (Staff ID 1581), excluding jobs where <code>Customer.CompanyName</code> contains "REDMEN FIRE" (internal study/admin time).</p>
+
+  <hr class="divider" />
+
+  <h3>4e. GET /api/warmup</h3>
+  <p>Triggers a full cache refresh for all data sources. Called by Google Cloud Scheduler every 4 minutes.</p>
+  <ul>
+    <li>Calls <code>warmAll()</code> — sequentially refreshes all 6 company/stage job caches.</li>
+    <li>Calls <code>warmLeave()</code>, <code>warmTechSupport()</code>, <code>warmAfacProspect()</code> in parallel.</li>
+    <li>Max duration: 300 seconds.</li>
+  </ul>
+</section>
+
+<!-- SECTION 5: CACHING STRATEGY -->
+<section>
+  <h2 class="section-title">5. Caching Strategy</h2>
+
+  <h3>Cache Files</h3>
+  <table>
+    <tr><th>Cache File (in /tmp)</th><th>API</th><th>TTL</th></tr>
+    <tr><td><code>afss-v4-1-pending-cache.json</code></td><td>/api/data?company=1&amp;stage=Pending</td><td>1 hour</td></tr>
+    <tr><td><code>afss-v4-1-progress-cache.json</code></td><td>/api/data?company=1&amp;stage=Progress</td><td>1 hour</td></tr>
+    <tr><td><code>afss-v4-8-pending-cache.json</code></td><td>/api/data?company=8&amp;stage=Pending</td><td>1 hour</td></tr>
+    <tr><td><code>afss-v4-8-progress-cache.json</code></td><td>/api/data?company=8&amp;stage=Progress</td><td>1 hour</td></tr>
+    <tr><td><code>afss-v4-10-pending-cache.json</code></td><td>/api/data?company=10&amp;stage=Pending</td><td>1 hour</td></tr>
+    <tr><td><code>afss-v4-10-progress-cache.json</code></td><td>/api/data?company=10&amp;stage=Progress</td><td>1 hour</td></tr>
+    <tr><td><code>afss-leave-cache.json</code></td><td>/api/leave</td><td>1 hour</td></tr>
+    <tr><td><code>afss-tech-support-v57-{year}-{month}.json</code></td><td>/api/tech-support (per month — e.g. <code>…v57-2026-06.json</code>)</td><td>1 hour</td></tr>
+    <tr><td><code>afss-cc-name-cache-v2.json</code></td><td>AFSS cost centre names — persistent across reboots</td><td>No TTL (permanent)</td></tr>
+    <tr><td><code>afss-afac-prospect-v6-cache.json</code></td><td>/api/afac-prospect</td><td>1 hour</td></tr>
+  </table>
+
+  <h3>Two-Level Partial Cache</h3>
+  <p>For job data (<code>/api/data</code>), there are two cache states:</p>
+  <ol>
+    <li><strong>Partial cache</strong> (<code>partial: true</code>) — contains basic job list without schedule enrichment (<code>_scheduledDate</code> may be null). Returned with <code>X-Partial: 1</code> header. Dashboard retries in 5 seconds.</li>
+    <li><strong>Full cache</strong> (<code>partial: false</code>) — fully enriched with site, schedule, and customer group data. Dashboard treats this as complete.</li>
+  </ol>
+
+  <h3>Sequential Enrichment Queue</h3>
+  <p>To prevent SimPRO rate-limiting when multiple requests come in simultaneously (e.g., all 6 company/stage requests on cold cache), all background <code>fetchAndCache()</code> calls are serialised through a global promise queue (<code>queueEnrichment()</code> in <code>simpro.ts</code>).</p>
+  <p>This means enrichments run one at a time, avoiding the 429 rate-limit errors that previously caused company 10 (AE Evac) to return 0 jobs.</p>
+
+  <h3>Startup Warmup</h3>
+  <p><code>instrumentation.ts</code> fires all warmup functions in the background when the Node.js server starts. This minimises the cold-cache window after a new deployment before the Cloud Scheduler fires.</p>
+</section>
+
+<!-- SECTION 6: DASHBOARD CALCULATIONS -->
+<section>
+  <h2 class="section-title">6. Dashboard Calculations</h2>
+
+  <h3>Job Status Classification</h3>
+  <table>
+    <tr><th>Status Key</th><th>Rule</th></tr>
+    <tr><td><code>complete</code></td><td>Stage = Progress AND company ≠ 10; OR status name includes "complete", "released", or "attendance"</td></tr>
+    <tr><td><code>scheduled</code></td><td>Has <code>_scheduledDate</code> (and not complete); OR company 10 + Progress + has scheduled date</td></tr>
+    <tr><td><code>tentative</code></td><td>No <code>_scheduledDate</code> and not complete</td></tr>
+    <tr><td><code>awaiting</code></td><td>Not currently used (0 in current data — awaiting client info condition)</td></tr>
+  </table>
+
+  <h3>Hours Calculation Per Job</h3>
+  <table>
+    <tr><th>Context</th><th>Hours Used</th></tr>
+    <tr><td>Scheduled row</td><td><code>_scheduledHours</code> if &gt; 0, otherwise <code>Totals.ResourcesCost.LaborHours.Estimate</code></td></tr>
+    <tr><td>All other rows</td><td><code>Totals.ResourcesCost.LaborHours.Estimate</code> (defaults to 2 if 0)</td></tr>
+  </table>
+
+  <h3>Total Backlog Filter</h3>
+  <p>Counts all jobs where <code>isInAnyRow()</code> is true:</p>
+  <ul>
+    <li>Any non-complete job: always counted.</li>
+    <li>Complete jobs: counted only if they do NOT have a mixed plan type (i.e., do not have an "A [letter]" technician other than "A CFSP ONLY").</li>
+  </ul>
+
+  <h3>Demand Hours Audits</h3>
+  <pre><code>Demand Audit = Sum of hrsForJob() for all backlog jobs in companies 1, 8, 10
+             + AFAC Prospect Demand hours</code></pre>
+
+  <h3>Supply Hours</h3>
+  <ul>
+    <li><strong>Supply Audit:</strong> Total monthly hours for team members with role "Primary APFS".</li>
+    <li><strong>Supply Technical:</strong> Total monthly hours for non-Primary-APFS team members.</li>
+    <li><strong>Overall Supply:</strong> Supply Audit + Supply Technical.</li>
+  </ul>
+
+  <h3>Month Filter</h3>
+  <p>When a month is selected in the dropdown, the dashboard shows jobs scheduled in that month <strong>and the previous month</strong>. Only jobs with a <code>_scheduledDate</code> match the filter (unscheduled jobs are excluded).</p>
+
+  <h3>Technical Support Works Date Range</h3>
+  <p>The date window for collecting tech-support schedule blocks depends on the selected month relative to today:</p>
+  <table>
+    <tr><th>Selected Month</th><th>Date Window</th><th>Example (today = 28 May 2026)</th></tr>
+    <tr><td>Current or future month</td><td><strong>Today → last day of selected month</strong></td><td>June 2026 → 28 May 2026 to 30 Jun 2026</td></tr>
+    <tr><td>Past month</td><td>First day → last day of selected month (full month)</td><td>April 2026 → 1 Apr 2026 to 30 Apr 2026</td></tr>
+  </table>
+  <p>This ensures the current-month and future-month figures reflect only <em>remaining</em> scheduled work (not work already done), which matches how SimPRO's schedule breakdown filter works when run on the same day.</p>
+</section>
+
+<!-- SECTION 7: SIMPRO API NOTES -->
+<section>
+  <h2 class="section-title">7. SimPRO API Integration Notes</h2>
+
+  <div class="warn-box">
+    <strong>Critical:</strong> These quirks were discovered during development. Always refer to these before modifying SimPRO API calls.
+  </div>
+
+  <h3>Working Endpoints</h3>
+  <table>
+    <tr><th>Endpoint</th><th>Notes</th></tr>
+    <tr><td><code>/api/v1.0/companies/{id}/jobs/?pageSize=250&amp;columns=...&amp;Stage=...</code></td><td>Job list with column selection. Up to 10 pages (2,500 jobs).</td></tr>
+    <tr><td><code>/api/v1.0/companies/{id}/jobs/{jobId}</code></td><td>Single job detail. <strong>No trailing slash.</strong></td></tr>
+    <tr><td><code>/api/v1.0/companies/{id}/schedules/?JobID={id}&amp;pageSize=250</code></td><td>Schedule blocks for a specific job.</td></tr>
+    <tr><td><code>/api/v1.0/companies/{id}/schedules/?Date=YYYY-MM-DD&amp;pageSize=250</code></td><td>Schedule blocks for a single day.</td></tr>
+    <tr><td><code>/api/v1.0/companies/{id}/sites/{siteId}</code></td><td>Site detail.</td></tr>
+    <tr><td><code>/api/v1.0/companies/{id}/customers/companies/{custId}</code></td><td>Customer company detail.</td></tr>
+    <tr><td><code>/api/v1.0/companies/{id}/staff/?pageSize=250&amp;columns=ID,Name</code></td><td>Staff list.</td></tr>
+    <tr><td><code>/api/v1.0/companies/{id}/jobs/{jobId}/sections/{sectionId}?expand=CostCenter</code></td><td>Single section detail with cost centre name. <strong>Requires <code>?expand=CostCenter</code></strong> — without it, CostCenter is omitted. Rate-limited — use batches of 5 with 150 ms delay between batches.</td></tr>
+  </table>
+
+  <h3>Known 404 Endpoints (Do Not Use)</h3>
+  <table>
+    <tr><th>Endpoint</th><th>Status</th></tr>
+    <tr><td><code>/api/v1.0/companies/8/cost-centres/</code></td><td>404 — not available</td></tr>
+    <tr><td><code>/api/v1.0/setup/cost-centres/</code></td><td>404 — not available</td></tr>
+    <tr><td><code>/api/v1.0/companies/{id}/jobs/{jobId}/sections</code> (list, no section ID)</td><td>404 — not available; must specify a section ID</td></tr>
+    <tr><td><code>/api/v1.0/companies/{id}/projects/{id}</code></td><td>404 — not available</td></tr>
+  </table>
+
+  <h3>Date Range Bug</h3>
+  <p><strong><code>DateFrom=</code> / <code>DateTo=</code> parameters are silently ignored</strong> by this SimPRO instance. They appear to be accepted but the API returns all schedules regardless of the range. Always use <code>Date=YYYY-MM-DD</code> for single-day filtering and loop day-by-day for ranges.</p>
+
+  <h3>Rate Limiting (429)</h3>
+  <p>SimPRO returns 429 when too many requests are made concurrently. The system handles this with exponential backoff (1s, 2s, 4s, 8s… up to 8 attempts). All background enrichment is serialised through a global queue to prevent simultaneous requests from exhausting the retry budget.</p>
+
+  <h3>Schedule Block Structure</h3>
+  <table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>Staff.ID</code></td><td>Employee ID</td></tr>
+    <tr><td><code>Project.ProjectID</code></td><td>Job ID (look up via <code>/jobs/{id}</code>)</td></tr>
+    <tr><td><code>Blocks[]</code></td><td>Individual time entries — SimPRO "Results" count = sum of Blocks.length</td></tr>
+    <tr><td><code>TotalHours</code></td><td>Total hours for the schedule entry</td></tr>
+    <tr><td><code>Type</code></td><td>"job" or "activity" (leave uses "activity" + Reference 1 or 2)</td></tr>
+    <tr><td><code>Reference</code></td><td>For activity blocks: "1" = Annual Leave, "2" = Sick/Personal Leave</td></tr>
+  </table>
+
+  <h3>CFSP Technician Filter</h3>
+  <p>Jobs for companies 1 and 10 are filtered to only those assigned to technician <strong>CFSP (ID 1126)</strong>. Company 8 (CHUBB/AFAC) returns all jobs with no technician filter.</p>
+
+  <h3>AFSS-Audit Identification (AFAC Prospect)</h3>
+  <ul>
+    <li>Muhammad Soban (Staff ID 1581) performs AFSS-Audit work under Company 8.</li>
+    <li>Internal/admin jobs: <code>Customer.CompanyName</code> = "REDMEN FIRE" (e.g. study time job 423441).</li>
+    <li>AFSS-Audit jobs: external customers (e.g. "CHUBB FIRE &amp; SECURITY PTY LIMITED").</li>
+    <li>Filter: keep Soban's company-8 schedule blocks where job customer is NOT "REDMEN FIRE".</li>
+  </ul>
+</section>
+
+<!-- SECTION 8: DEPLOYMENT & INFRASTRUCTURE -->
+<section>
+  <h2 class="section-title">8. Deployment &amp; Infrastructure</h2>
+
+  <h3>Cloud Run Service</h3>
+  <table>
+    <tr><th>Property</th><th>Value</th></tr>
+    <tr><td>Service name</td><td><code>bryan-technical-afss</code></td></tr>
+    <tr><td>GCP Project</td><td><code>buoyant-purpose-475203-t9</code></td></tr>
+    <tr><td>Region</td><td><code>australia-southeast1</code></td></tr>
+    <tr><td>URL</td><td><code>https://bryan-technical-afss-712513641417.australia-southeast1.run.app</code></td></tr>
+    <tr><td>Min instances</td><td>1 (always warm — no cold starts)</td></tr>
+    <tr><td>Cache storage</td><td><code>/tmp</code> (ephemeral, per-instance)</td></tr>
+  </table>
+
+  <h3>Deployment Command</h3>
+  <pre><code>gcloud run deploy bryan-technical-afss \
+  --source . \
+  --region australia-southeast1 \
+  --project buoyant-purpose-475203-t9</code></pre>
+
+  <h3>Deployment Steps</h3>
+  <ol>
+    <li>Make code changes locally.</li>
+    <li>Run <code>npx next build</code> to verify the build passes with no TypeScript errors.</li>
+    <li>Run the <code>gcloud run deploy</code> command above.</li>
+    <li>Cloud Build compiles and containerises the app.</li>
+    <li>New revision is created and receives 100% of traffic immediately.</li>
+    <li><code>instrumentation.ts</code> fires on startup — begins cache warmup in background.</li>
+    <li>Within ~2 minutes: all caches warm, dashboard shows correct data.</li>
+  </ol>
+
+  <h3>Cloud Scheduler</h3>
+  <table>
+    <tr><th>Job Name</th><th>Schedule</th><th>Target</th></tr>
+    <tr><td><code>afss-cache-warmup</code></td><td>Every 4 minutes</td><td><code>GET /api/warmup</code></td></tr>
+  </table>
+
+  <h3>Cache Lifecycle After Deployment</h3>
+  <pre><code>  t=0     New Cloud Run revision starts
+  t=0     instrumentation.ts fires warmAll() in background
+  t=0-2m  First users may see partial data (X-Partial) — retries every 5s
+  t=~2m   instrumentation warmup completes — full data served
+  t=4m    Cloud Scheduler warmup fires (from this point on, cache always stays fresh)</code></pre>
+</section>
+
+<!-- SECTION 9: ENVIRONMENT VARIABLES -->
+<section>
+  <h2 class="section-title">9. Environment Variables</h2>
+
+  <table>
+    <tr><th>Variable</th><th>Description</th><th>Example</th></tr>
+    <tr><td><code>SIMPRO_BASE_URL</code></td><td>SimPRO instance base URL (no trailing slash)</td><td><code>https://redmen.simprosuite.com</code></td></tr>
+    <tr><td><code>SIMPRO_TOKEN</code></td><td>Bearer token for SimPRO API authentication. BOM character stripped automatically.</td><td><code>eyJhbGci...</code></td></tr>
+  </table>
+
+  <div class="warn-box">
+    <strong>Security note:</strong> These variables are set in Cloud Run as secret environment variables. Never commit them to source control.
+  </div>
+
+  <p>The token is sanitised on load: <code>process.env.SIMPRO_TOKEN?.replace(/^﻿/, "").trim()</code> — this strips a UTF-8 BOM character that can appear when the token is copied from certain editors.</p>
+</section>
+
+<!-- SECTION 10: KNOWN BEHAVIOURS & QUIRKS -->
+<section>
+  <h2 class="section-title">10. Known Behaviours &amp; Quirks</h2>
+
+  <h3>Dashboard Auto-Refresh</h3>
+  <ul>
+    <li>Auto-refreshes every <strong>5 minutes</strong>.</li>
+    <li>If any API returns <code>X-Partial: 1</code>, a retry fires after <strong>5 seconds</strong>.</li>
+    <li>"Loading…" only appears on first page open (no data yet). Background refreshes are silent.</li>
+    <li>Manual "Refresh now" button forces a fresh fetch bypassing cache.</li>
+  </ul>
+
+  <h3>Job Hours Default</h3>
+  <p>If a job's estimated labour hours = 0 or missing, the system defaults to <strong>2 hours</strong>. This affects Est. Hrs totals in the dashboard.</p>
+
+  <h3>Job Price Default</h3>
+  <p>If a job's <code>Total.ExTax</code> = 0, the invoice amount defaults to <strong>$330</strong>.</p>
+
+  <h3>Mixed Plan Type Exclusion</h3>
+  <p>Jobs assigned to a technician matching pattern <code>/^A [A-Z]/</code> (other than "A CFSP ONLY") are considered "mixed plan type" and excluded from the Total Backlog count when their status is "complete". This prevents double-counting of jobs handled by both AFSS and other technicians.</p>
+
+  <h3>AE Evac (Company 10) — Special Status Rules</h3>
+  <p>For company 10 only, a Progress-stage job means the audit is <em>booked</em> (not yet complete). These jobs are classified as Scheduled (if they have a schedule date) or Tentative (if not), not as Attendance Complete.</p>
+
+  <h3>Tech Support Leave Hours Cutoff</h3>
+  <p>Supply hours are calculated using <em>remaining</em> working days. After 3 PM, today is no longer counted. This ensures the supply figure reflects realistic remaining capacity.</p>
+
+  <h3>AFAC Prospect Date Sliding Window</h3>
+  <p>Each day, the "same day last year" window shifts forward by one day. On 27 May 2026, the window becomes 27 May 2025 → 31 May 2025. The data updates automatically without any code changes.</p>
+
+  <h3>Tech Support CC Name Automation</h3>
+  <p>The first time <code>/api/tech-support</code> is called for a given month, it may encounter schedule blocks with cost centre IDs that are not in <code>KNOWN_AFSS_CC_IDS</code> and not yet in the persistent CC name cache. For these, the API calls the SimPRO section endpoint to resolve the cost centre name. After the first successful build, all IDs are cached and subsequent calls are instant — no further section API calls are made for those IDs. New AFSS cost centres added in SimPRO are picked up automatically on the next cold build without any code changes.</p>
+
+  <h3>Invested Time — Pending Stage Only</h3>
+  <p>The <strong>Invested Time</strong> column counts only jobs whose SimPRO stage is exactly <strong>"Pending"</strong>. Jobs that are In Progress, Complete, Cancelled, or Archived are excluded even if they have AFSS cost-centre blocks. This matches SimPRO's native "Job Stage: Pending" filter in the schedule breakdown report. By contrast, Other Billable counts Pending and In Progress jobs (excludes only terminal stages).</p>
+
+  <h3>Internal Client List (Invested Time)</h3>
+  <p>Invested Time is restricted to jobs for internal clients. The current internal client check looks for these substrings (case-insensitive) in the customer's company name: <code>REDMEN FIRE</code>, <code>Z SAFE OS</code>, <code>ADAIR OPERATION</code>, <code>AFAC</code>.</p>
+
+  <h3>Team Member IDs (SimPRO)</h3>
+  <table>
+    <tr><th>Name</th><th>SimPRO Staff ID</th><th>Role</th></tr>
+    <tr><td>Muhammad Soban</td><td>1581</td><td>Primary APFS — AFSS-Audit lead</td></tr>
+    <tr><td>Ryan Gordon</td><td>15</td><td>Mixed Technical Support &amp; Secondary APFS</td></tr>
+    <tr><td>Josh Roger</td><td>1753</td><td>Estimation / Office Management</td></tr>
+    <tr><td>CFSP (Plan Type Tech)</td><td>1126</td><td>Used to filter AFSS-Audit jobs for companies 1 &amp; 10</td></tr>
+  </table>
+</section>
+
+<div class="footer">AFSS Backlog System — Confidential — May 2026</div>
+</body>
+</html>
