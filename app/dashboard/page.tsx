@@ -174,6 +174,7 @@ export default function DashboardPage() {
   const [team,           setTeam]           = useState<TeamMember[]>([]);
   const [publicHolidays, setPublicHolidays] = useState<PublicHoliday[]>([]);
   const [extraTeam,      setExtraTeam]      = useState<TeamMember[]>([]);
+  const [hiddenCoreIds,  setHiddenCoreIds]  = useState<Set<number>>(new Set());
   const [addingMember,   setAddingMember]   = useState(false);
   const [searchName,     setSearchName]     = useState("");
   const [searchResults,  setSearchResults]  = useState<{ id: number; name: string; company: number }[]>([]);
@@ -205,6 +206,8 @@ export default function DashboardPage() {
   const [obData, setObData] = useState<{ jobs: number; hours: number; amount: number } | null>(null);
   const [itData, setItData] = useState<{ jobs: number; hours: number; amount: number } | null>(null);
   const [qaData, setQaData] = useState<{ jobs: number; hours: number; amount: number } | null>(null);
+  const [techRefreshing, setTechRefreshing] = useState(false);
+  const [refreshSecsLeft, setRefreshSecsLeft] = useState(0);
 
   async function load(force = false) {
     if (partialTimerRef.current) { clearTimeout(partialTimerRef.current); partialTimerRef.current = null; }
@@ -257,6 +260,21 @@ export default function DashboardPage() {
     const t = setTimeout(() => load(), 30_000); // eslint-disable-line react-hooks/exhaustive-deps
     return () => clearTimeout(t);
   }, [loading, hasData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("d1-hiddenCoreIds");
+      if (stored) setHiddenCoreIds(new Set(JSON.parse(stored) as number[]));
+    } catch {}
+  }, []);
+
+  function hideCoreTeamMember(id: number) {
+    setHiddenCoreIds(prev => {
+      const next = new Set(prev).add(id);
+      try { localStorage.setItem("d1-hiddenCoreIds", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }
 
   function loadLeave(force = false) {
     const sfx = force ? "?force=1" : "";
@@ -380,6 +398,7 @@ export default function DashboardPage() {
       p.set("year", y);
       p.set("month", m);
     }
+    if (force) setTechRefreshing(true);
     fetch(`/api/tech-support?${p}`)
       .then(r => r.json())
       .then(d => {
@@ -387,7 +406,8 @@ export default function DashboardPage() {
         if (d?.investedTime     != null) setItData(d.investedTime);
         if (d?.qualityAssurance != null) setQaData(d.qualityAssurance);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { if (force) setTechRefreshing(false); });
   }
 
   useEffect(() => {
@@ -464,6 +484,15 @@ export default function DashboardPage() {
     return () => clearTimeout(t);
   }, [obData, itData, qaData]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Countdown timer for Refresh now button
+  useEffect(() => {
+    if (!techRefreshing) { setRefreshSecsLeft(0); return; }
+    setRefreshSecsLeft(90);
+    const t = setInterval(() => setRefreshSecsLeft(s => Math.max(0, s - 1)), 1000);
+    const safety = setTimeout(() => setTechRefreshing(false), 150_000);
+    return () => { clearInterval(t); clearTimeout(safety); };
+  }, [techRefreshing]);
+
   // Exclude jobs with "A BLOCK PLANS" technician from dashboard counts
   const isBlockPlansJob = (job: RawJob) =>
     ((job.Technicians as Record<string, unknown>[]) ?? [])
@@ -511,30 +540,32 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col bg-white">
       {/* Nav */}
-      <div className="flex items-center gap-4 px-4 py-2.5 bg-white border-b border-neutral-200 shrink-0">
-        <Link href="/" className="text-sm text-blue-600 hover:underline font-medium">← Backlog</Link>
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-white border-b border-neutral-200 shrink-0">
+        <Link href="/" className="text-sm text-blue-600 hover:underline font-medium shrink-0">← Backlog</Link>
         <select
           defaultValue="/dashboard"
           onChange={e => { window.location.href = e.target.value; }}
-          className="font-bold text-sm text-neutral-800 border border-neutral-300 rounded px-2 py-0.5 bg-white cursor-pointer"
+          className="shrink-0 font-bold text-sm text-neutral-800 border border-neutral-300 rounded px-2 py-0.5 bg-white cursor-pointer"
         >
           <option value="/dashboard">Dashboard</option>
           <option value="/dashboard2">Dashboard (NO DATACOM)</option>
         </select>
-        {loading && !hasData && <span className="text-xs text-blue-500 animate-pulse">Loading…</span>}
-        {updated && !loading && (
-          <span className="text-xs text-neutral-400">Updated: {updated.toLocaleTimeString()}</span>
-        )}
-        {isPartial && !loading && (
-          <span className="text-xs text-amber-500 animate-pulse">Refreshing schedule data…</span>
-        )}
-        <span className="ml-2 text-xs text-neutral-400">
-          {hasData && `${visibleAll.length} total jobs${monthFilter !== "all" ? ` in ${monthOptions.find(o => o.value === monthFilter)?.label ?? ""}` : " across all companies"}`}
+        <span className="flex-1 min-w-0 flex items-center gap-2 overflow-hidden">
+          {loading && !hasData && <span className="text-xs text-blue-500 animate-pulse shrink-0">Loading…</span>}
+          {updated && !loading && (
+            <span className="text-xs text-neutral-400 shrink-0">Updated: {updated.toLocaleTimeString()}</span>
+          )}
+          {isPartial && !loading && (
+            <span className="text-xs text-amber-500 animate-pulse shrink-0">Refreshing…</span>
+          )}
+          <span className="text-xs text-neutral-400 truncate">
+            {hasData && `${visibleAll.length} total jobs${monthFilter !== "all" ? ` in ${monthOptions.find(o => o.value === monthFilter)?.label ?? ""}` : " across all companies"}`}
+          </span>
         </span>
         <select
           value={monthFilter}
           onChange={e => setMonthFilter(e.target.value)}
-          className="ml-auto px-2 py-1 rounded border border-neutral-300 text-xs bg-white text-neutral-800 font-semibold cursor-pointer"
+          className="shrink-0 px-2 py-1 rounded border border-neutral-300 text-xs bg-white text-neutral-800 font-semibold cursor-pointer"
         >
           {monthOptions.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -542,9 +573,10 @@ export default function DashboardPage() {
         </select>
         <button
           onClick={() => { load(true); loadLeave(true); loadTechSupport(true); loadAfacProspect(true); }}
-          className="px-3 py-1 rounded bg-neutral-100 hover:bg-neutral-200 text-xs"
+          disabled={techRefreshing}
+          className="shrink-0 px-3 py-1 rounded bg-neutral-100 hover:bg-neutral-200 text-xs disabled:opacity-50"
         >
-          Refresh now
+          {techRefreshing ? (refreshSecsLeft > 0 ? `Refreshing… (${refreshSecsLeft}s)` : "Almost done…") : "Refresh now"}
         </button>
       </div>
 
@@ -650,10 +682,11 @@ export default function DashboardPage() {
                         >
                           {row.label}
                         </td>
-                        <StatCells s={agg(all, getHrs)} />
+                        <StatCells s={row.key === "complete" ? { ...agg(all, getHrs), hrs: 0 } : agg(all, getHrs)} />
                         {COMPANIES.map(co => {
                           const jobs = visibleCo(co.id).filter(rowFilter);
-                          return <StatCells key={co.id} s={agg(jobs, getHrs)} />;
+                          const s = agg(jobs, getHrs);
+                          return <StatCells key={co.id} s={row.key === "complete" ? { ...s, hrs: 0 } : s} />;
                         })}
                       </tr>
                     </React.Fragment>
@@ -694,7 +727,7 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {team.map(member => {
+                {team.filter(m => !hiddenCoreIds.has(m.id)).map(member => {
                   const leaveDays  = remainingLeaveDays(member, now);
                   const leaveHrs   = leaveDays * 8;
                   const netHrs     = Math.max(0, member.monthlyHours - leaveHrs);
@@ -702,8 +735,15 @@ export default function DashboardPage() {
                   return (
                     <tr key={member.id}>
                       <td className="border border-gray-400 px-3 py-2 text-center text-sm">
-                        {member.name}
-                        {onLeaveNow && <span className="ml-1 text-xs text-red-500 font-semibold">(On Leave)</span>}
+                        <span className="flex items-center justify-center gap-1">
+                          {member.name}
+                          {onLeaveNow && <span className="text-xs text-red-500 font-semibold">(On Leave)</span>}
+                          <button
+                            onClick={() => hideCoreTeamMember(member.id)}
+                            className="ml-1 text-red-400 hover:text-red-600 text-xs font-bold leading-none"
+                            title="Remove member"
+                          >×</button>
+                        </span>
                       </td>
                       <td className="border border-gray-400 px-2 py-2 text-center text-sm">{netHrs}</td>
                       <td className="border border-gray-400 px-2 py-2 text-center text-sm">{member.monthlyHours}</td>
@@ -756,10 +796,10 @@ export default function DashboardPage() {
                 <tr className="font-bold">
                   <td className="border border-gray-400 px-3 py-2" style={{ backgroundColor: "#ede9fe" }} />
                   <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#ede9fe" }}>
-                    {[...team, ...extraTeam].reduce((s, m) => s + Math.max(0, m.monthlyHours - remainingLeaveDays(m, now) * 8), 0)}
+                    {[...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + Math.max(0, m.monthlyHours - remainingLeaveDays(m, now) * 8), 0) - publicHolidays.length * 8}
                   </td>
                   <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#ede9fe" }}>
-                    {[...team, ...extraTeam].reduce((s, m) => s + m.monthlyHours, 0)}
+                    {[...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + m.monthlyHours, 0) - publicHolidays.length * 8}
                   </td>
                   <td className="border border-gray-400 px-2 py-2" style={{ backgroundColor: "#ede9fe" }} />
                 </tr>
@@ -991,9 +1031,10 @@ export default function DashboardPage() {
             </table>
             {/* Supply vs Demand */}
             {(() => {
-              const supplyAudit  = team.filter(m => m.role.includes("Primary APFS"))
+              const allMembers   = [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam];
+              const supplyAudit  = allMembers.filter(m => m.role.includes("Primary APFS"))
                 .reduce((s, m) => s + m.monthlyHours, 0);
-              const supplyTech   = team.filter(m => !m.role.includes("Primary APFS"))
+              const supplyTech   = allMembers.filter(m => !m.role.includes("Primary APFS"))
                 .reduce((s, m) => s + m.monthlyHours, 0);
               const demandAudit  = [1, 8, 10].reduce((sum, coId) =>
                 sum + visibleCo(coId).filter(isInAnyRow).reduce((s, j) => s + hrsForJob(j), 0), 0

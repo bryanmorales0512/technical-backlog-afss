@@ -2,7 +2,8 @@
 
 Internal tool for Red Adair that pulls job data from SimPRO, enriches it with site and schedule details, and presents it across two views: a per-company backlog table and an aggregate analytics dashboard.
 
-**Live site:** https://bryan-technical-afss-712513641417.australia-southeast1.run.app
+**Live site:** https://bryan-technical-afss-712513641417.australia-southeast1.run.app  
+**Last updated:** June 2026
 
 ---
 
@@ -34,18 +35,21 @@ The app tracks CFSP (fire safety) jobs across three SimPRO companies:
 
 Jobs are filtered to those assigned to technician **A CFSP ONLY** (ID `1126`) for companies 1 and 10. Company 8 shows all jobs without a technician filter.
 
+All times use **AEST (UTC+10)**.
+
 ---
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 16.2.6 (App Router) |
-| UI | React 19.2.4 + TypeScript 5 |
+| Framework | Next.js 16 (App Router) |
+| UI | React 19 + TypeScript 5 |
 | Styling | Tailwind CSS v4 |
 | Runtime | Node.js 20 |
 | Hosting | Google Cloud Run (australia-southeast1) |
 | Source data | SimPRO REST API v1.0 |
+| Public holidays | date.nager.at API (NSW) |
 
 ---
 
@@ -53,23 +57,29 @@ Jobs are filtered to those assigned to technician **A CFSP ONLY** (ID `1126`) fo
 
 ```
 app/
-  page.tsx                  # Main backlog table (/)
-  dashboard/page.tsx        # Analytics dashboard (/dashboard)
-  progress/page.tsx         # Legacy redirect → /
-  globals.css               # Tailwind base styles
-  layout.tsx                # Root HTML layout (Geist font)
+  page.tsx                    # Main backlog table (/)
+  dashboard/page.tsx          # Analytics dashboard (/dashboard)
+  dashboard2/page.tsx         # Dashboard NO DATACOM (/dashboard2)
+  globals.css                 # Tailwind base styles
+  layout.tsx                  # Root HTML layout
   lib/
-    simpro.ts               # SimPRO API client, pooled fetching, disk cache
+    simpro.ts                 # SimPRO API client, pooled fetching, disk cache
+    gcsCache.ts               # GCS cache stub (disabled)
   api/
-    data/route.ts           # Main job data endpoint (smart cache)
-    leave/route.ts          # Team leave schedule
-    tech-support/route.ts   # Tech support work analytics
-    warmup/route.ts         # Cache pre-warming (call after deploy)
-    debug/route.ts          # Debug queries (tentative / scheduled / techs)
-    jobs/route.ts           # Deprecated — not used by UI
-    progress/route.ts       # Deprecated — not used by UI
-Dockerfile                  # Multi-stage Docker build
-next.config.ts              # Standalone output for containerised deploy
+    data/route.ts             # AFSS Audits job data endpoint
+    leave/route.ts            # Team leave schedule + public holidays
+    tech-support/route.ts     # Technical Support Works (OB, IT, QA)
+    afac-prospect/route.ts    # AFAC Prospect Demand
+    intercompany/route.ts     # Intercompany work (manual entry)
+    afac-exclusions/route.ts  # AFAC excluded dates (manual entry)
+    extra-team/route.ts       # Extra team members
+    warmup/route.ts           # Cache pre-warming
+    webhook/simpro/route.ts   # SimPRO webhook handler
+data/
+  intercompany.json           # Persisted intercompany hours (sync before deploy)
+  afac-exclusions.json        # Persisted AFAC excluded dates (sync before deploy)
+instrumentation.ts            # Startup warmup (blocks traffic until cache is warm)
+Dockerfile                    # Multi-stage Docker build
 ```
 
 ---
@@ -83,7 +93,7 @@ SIMPRO_BASE_URL=https://redmen.simprosuite.com
 SIMPRO_TOKEN=<bearer token>
 ```
 
-Both variables are server-side only (never sent to the browser).
+Both variables are server-side only.
 
 ---
 
@@ -96,8 +106,6 @@ yarn dev
 
 Open http://localhost:3000.
 
-The dev server hot-reloads on file changes. API routes run in the same process and use the same `/tmp` cache directory as production.
-
 ---
 
 ## Pages
@@ -106,163 +114,35 @@ The dev server hot-reloads on file changes. API routes run in the same process a
 
 Displays a scrollable job table for the selected company and stage (Pending or Progress).
 
-**Controls:**
-- **Company dropdown** — switches between RM AFSS, CHUBB/AFAC AFSS, AE Evac
-- **Stage tabs** — Pending / Progress
-- **Refresh now** — forces a cache bypass and full SimPRO re-fetch
-- **Auto-poll** — refreshes data every 60 seconds in the background
-
-**Columns vary by company and stage.** Common columns across all views:
-
-| Column | Source |
-|---|---|
-| Job | SimPRO job ID |
-| Status | `Status.Name` with color dot from `Status.Color` |
-| Created Date | `DateIssued` |
-| Customer | `Customer.CompanyName` or individual name |
-| Site | `Site.Name` |
-| Scheduled | `_scheduledDate` (see [Scheduled Date Priority](#scheduled-date-priority)) |
-| Est. Hours | `Totals.ResourcesCost.LaborHours.Estimate` (defaults to 2 if zero) |
-| Due Date | `DueDate` |
-| Technicians | Comma-separated list from `Technicians[].Name` |
-| Sell Price | `Total.ExTax` (defaults to $330 if zero) |
-| Tags | Comma-separated list from `Tags[].Name` |
-
-Additional columns for specific companies include Site Suburb, Site Postcode, Customer Group, Actual Hours, Job Type, Salesperson, Site Contact, and Notes (HTML stripped).
-
----
-
 ### `/dashboard` — Analytics Dashboard
 
-Aggregate view with three sections:
+Full analytics dashboard including all sections.
 
-#### Work Demand Table
+### `/dashboard2` — Dashboard (NO DATACOM)
 
-Rows break down the full backlog by status across all three companies:
-
-| Row | Colour | Condition |
-|---|---|---|
-| Total Backlog as at end of period | Purple | All visible jobs |
-| Scheduled Awaiting to be Done | Green | Job has a `_scheduledDate` |
-| Awaiting Client Info | Blue | Pending, no date |
-| Tentative Awaiting Scheduling | Gold | No scheduled date |
-| Attendance Complete / Results To Be Released | Gray | Progress stage (excl. mixed plan type) |
-
-Each row shows **# of Jobs**, **Sum of Est. Hours**, and **Invoice Amount**.
-
-A **month filter** dropdown (All / current month / +2 months) narrows results. Selecting a month also includes the previous month to align with the SimPRO Schedule Breakdown report.
-
-#### Technical Team Supply
-
-Shows net available hours per team member after deducting approved leave. Leave is sourced from `/api/leave`. Hours reset at midnight; the "remaining" calculation switches from today to tomorrow at 3 PM.
-
-#### Technical Support Works
-
-Three sub-sections, all billed at $100/hour:
-
-| Section | Description |
-|---|---|
-| Other Billable Work | Jobs scheduled to the tech team this month, excluding AFSS audits and system-testing tagged jobs |
-| Invested Time | Estimated workload of customers the team is currently serving (Pending jobs only) |
-| Quality Assurance | All jobs (Pending + Progress) assigned to "A Quality Assurance Officer" |
+Same as `/dashboard` but excludes DATACOM cost-centre jobs from Other Billable counts.
 
 ---
 
 ## API Routes
 
-### `GET /api/data`
-
-Main job data endpoint with intelligent caching.
-
-**Query parameters:**
-
-| Param | Values | Default |
+| Route | Purpose | TTL |
 |---|---|---|
-| `company` | `1`, `8`, `10` | `1` |
-| `stage` | `Pending`, `Progress` | `Pending` |
-| `force` | `0`, `1` | `0` |
-
-**Response:** Array of enriched job objects (see [Data Model](#data-model)).
-
-**Cache behaviour:**
-
-| State | Action |
-|---|---|
-| Fresh cache (<5 min, complete) | Return immediately |
-| Stale or partial cache | Return old data; refresh in background |
-| Cold cache | Return basic list instantly; enrich in background |
-| `force=1` | Bypass cache; full re-fetch; block until complete |
-
----
-
-### `GET /api/leave`
-
-Returns team leave schedules and monthly hours for the three technicians.
-
-**Query parameters:** `force=1` bypasses the 1-hour cache.
-
-**Response:**
-```ts
-[
-  {
-    id: number;
-    name: string;
-    role: string;
-    monthlyHours: number;        // Total supply hours for the month
-    leave: { from: string; to: string }[];  // ISO date ranges
-  }
-]
-```
-
-Scans SimPRO schedule blocks for activity type with References `"1"` (annual leave) or `"2"` (sick leave). Consecutive days (with weekend bridging and 1-day gap tolerance) are merged into single ranges.
-
-Cache file: `/tmp/afss-leave-cache.json` — TTL: 1 hour.
-
----
-
-### `GET /api/tech-support`
-
-Returns the three Technical Support Works metrics.
-
-**Query parameters:** `force=1` bypasses the 1-hour cache. `debug=1` returns raw diagnostic data.
-
-**Response:**
-```ts
-{
-  otherBillable:    { jobs: number; hours: number; amount: number };
-  investedTime:     { jobs: number; hours: number; amount: number };
-  qualityAssurance: { jobs: number; hours: number; amount: number };
-}
-```
-
-Cache file: `/tmp/afss-tech-support-v18-cache.json` — TTL: 1 hour.
-
----
-
-### `GET /api/warmup`
-
-Pre-warms the data cache for all six company/stage combinations sequentially. Call this after a fresh deployment to avoid cold-cache latency on first user visit.
-
-**Response:**
-```ts
-[{ company: number; stage: string; ok: boolean; ms: number }]
-```
-
-Max duration: 300 seconds.
-
----
-
-### `GET /api/debug`
-
-Diagnostic endpoint — not used by the UI.
-
-**Query parameters:** `company` (number), `mode` (`tentative` | `scheduled` | `techs`).
+| `GET /api/data?company=N&stage=S` | AFSS Audits job list | 1 hour |
+| `GET /api/leave` | Team leave + public holidays | 1 hour |
+| `GET /api/tech-support` | OB + IT + QA stats | OB/IT: 5 min, QA: 1 hour |
+| `GET /api/tech-support?force=1` | Force live rebuild | — |
+| `GET /api/tech-support?debug=list&year=Y&month=M` | Full block list for debugging | No cache |
+| `GET /api/afac-prospect` | AFAC Prospect Demand | 30 min |
+| `GET /api/intercompany` | Intercompany hours | No cache |
+| `POST /api/intercompany` | Save intercompany hours | — |
+| `GET /api/afac-exclusions` | AFAC excluded dates | No cache |
+| `POST /api/afac-exclusions` | Save excluded dates | — |
+| `GET /api/warmup` | Warm all caches | — |
 
 ---
 
 ## SimPRO Integration
-
-All SimPRO calls go through `app/lib/simpro.ts`.
 
 ### Authentication
 
@@ -272,133 +152,74 @@ Authorization: Bearer <SIMPRO_TOKEN>
 Content-Type: application/json
 ```
 
-The token is BOM-stripped on startup.
-
 ### Rate Limiting
 
-`simGet()` retries up to 8 times on HTTP 429 with exponential backoff starting at 1 second.
+`simGet()` retries up to 6 times on HTTP 429 with exponential backoff (1s → 2s → 4s → 8s…). Heavy usage exhausts the SimPRO rate limit; recovery takes 1–8 minutes.
 
-### Data Model
+### Known API Quirks
 
-A fully enriched job object contains the raw SimPRO fields plus these additions:
-
-| Field | Type | Description |
-|---|---|---|
-| `_site` | object \| null | Full SimPRO site record (address, suburb, postcode, primary contact) |
-| `_scheduledDate` | string \| null | Earliest scheduled date from schedule blocks (YYYY-MM-DD) |
-| `_scheduledHours` | number | Sum of all schedule block hours for the job |
-| `_customerGroup` | string | `Customer.Profile.CustomerGroup.Name` |
-
-### Enrichment Process
-
-For each company/stage combination, `fetchAndCache()` runs four parallel batched fetches (10 concurrent workers each):
-
-1. **Job details** — full job object per job ID
-2. **Site details** — full site object per unique site ID
-3. **Schedule blocks** — all schedule blocks per job ID (up to 250)
-4. **Customer details** — company or individual customer profile per unique customer
-
-Results are merged into the base job list and written to disk cache.
-
-### Scheduled Date Priority
-
-The `_scheduledDate` field is resolved in this order:
-
-1. First date from SimPRO schedule blocks (`Date` field)
-2. `detail.Scheduled` / `detail.DateScheduled` / `detail.ScheduledDate` / `detail.DateBooked`
-3. `null`
+| Issue | Workaround |
+|---|---|
+| `DateFrom`/`DateTo` silently ignored on schedules | Use `Date=YYYY-MM-DD` day-by-day |
+| Cost centre endpoints return 404 | Use `expand=CostCenter` on schedule blocks |
+| Stage field | Plain string ("Pending", "Progress") |
 
 ---
 
 ## Caching Strategy
 
-All caches use the local filesystem (`/tmp`) which is ephemeral on Cloud Run — caches clear on container restart or new deployment.
-
 | Cache | File | TTL |
 |---|---|---|
-| Job data (per company/stage) | `/tmp/afss-v4-{company}-{stage}-cache.json` | 5 minutes |
-| Team leave | `/tmp/afss-leave-cache.json` | 1 hour |
-| Tech support analytics | `/tmp/afss-tech-support-v18-cache.json` | 1 hour |
+| AFSS Audits (per company/stage) | `/tmp/afss-v4-{company}-{stage}-cache.json` | 1 hour |
+| Leave + public holidays | `/tmp/afss-leave-cache-v2.json` | 1 hour |
+| Tech Support OB/IT | `/tmp/afss-tech-support-v84-{year}-{month}.json` | 5 minutes |
+| Tech Support QA | `/tmp/afss-qa-v1.json` | 1 hour |
+| AFAC Prospect | `/tmp/afss-afac-prospect-{year}-{month}.json` | 30 minutes |
+| Public Holidays | `/tmp/afss-public-holidays-nsw-{year}.json` | Never |
 
-**Stale-while-revalidate pattern** (`/api/data`):
-- Serve cached data immediately (even if stale or partial)
-- Kick off background enrichment
-- Next poll will see fresh data
-
-After a deployment, visit `/api/warmup` to pre-populate all caches before sending users to the site.
+On every deploy, `instrumentation.ts` blocks all traffic until caches are warm (~10-13 minutes). After that, all page loads are instant.
 
 ---
 
 ## Business Logic
 
-### Estimated Hours Default
+### Technical Support Works
 
-If `Totals.ResourcesCost.LaborHours.Estimate` is zero or missing, the app defaults to **2 hours**. This applies everywhere hours are displayed or summed.
+Mirrors SimPRO's Schedule Breakdown report exactly:
 
-### Scheduled Hours (Dashboard)
+- **Staff:** Josh Roger (15), Muhammad Soban (1581), Ryan Gordon (1753) + Tentative-Muhammad + TENTATIVE-RYAN G
+- **Date range:** Today (AEST) → end of month. Past months: full month.
+- **Job Stage:** Pending or Progress
+- **Cost Centre:** 38 AFSS cost centres (CC name from `expand=CostCenter`, with KNOWN CC IDs as fallback)
+- **Customer split:** Internal (Redmen Fire, AFAC, Adair, Z SAFE) → Invested Time. External → Other Billable.
 
-For the "Scheduled Awaiting to be Done" dashboard row, hours come from `_scheduledHours` (actual scheduled blocks) if non-zero, otherwise from the estimate. This reflects what is actually booked rather than what was planned.
+### Attendance Complete Row
 
-### Mixed Plan Type Filter
+Sum of Est. Hrs always shows **0** — work in this row is already complete.
 
-A job is excluded from the "Attendance Complete" row if it has **both** `A CFSP ONLY` and another `A …` plan-type technician. This prevents double-counting jobs that straddle two cost centres.
+### Public Holidays
 
-### Leave Deduction Timing
-
-- Before 3 PM: today's hours are included in remaining supply
-- At or after 3 PM: today is treated as consumed; supply starts from tomorrow
-
-### Tech Support — Other Billable Exclusions
-
-Jobs are excluded from "Other Billable Work" if:
-- They have technician `A CFSP ONLY` (ID `1126`) — these are AFSS audit jobs tracked separately
-- They have a tag whose name contains `"system testing"`
-
-### Tech Support — Tentative Staff
-
-In addition to the three named technicians (IDs `1581`, `15`, `1753`), schedule blocks for staff whose names contain `"tentative"`, `"training"`, or `"non-billable"` are included in Other Billable and Invested Time calculations.
+Auto-fetched from date.nager.at, filtered to NSW (AU-NSW). NSW Bank Holiday (first Monday August) added programmatically.
 
 ---
 
 ## Deployment
 
-### Build and deploy to Cloud Run
+### Before every deploy — sync persistent data
 
-```bash
-gcloud run deploy bryan-technical-afss \
-  --source . \
-  --region australia-southeast1 \
-  --project buoyant-purpose-475203-t9 \
-  --quiet
+Run in PowerShell from the `afss-backlog\` folder:
+
+```powershell
+Invoke-WebRequest -Uri "https://bryan-technical-afss-712513641417.australia-southeast1.run.app/api/intercompany" -OutFile "data\intercompany.json"
+Invoke-WebRequest -Uri "https://bryan-technical-afss-712513641417.australia-southeast1.run.app/api/afac-exclusions" -OutFile "data\afac-exclusions.json"
 ```
 
-This uses Cloud Build to build the Docker image and deploys it to the existing Cloud Run service. The `--source .` flag uses the `Dockerfile` in the project root.
+### Deploy command
 
-### Dockerfile (multi-stage)
-
-```
-Stage 1 (deps)     node:20-alpine — install yarn dependencies
-Stage 2 (builder)  node:20-alpine — build Next.js standalone output
-Stage 3 (runner)   node:20-alpine — run server.js on port 8080
+```powershell
+gcloud run deploy bryan-technical-afss --source . --region australia-southeast1 --timeout=300 --min-instances=1 --quiet
 ```
 
-`next.config.ts` sets `output: "standalone"` so the built image contains only the files needed to run the server.
+### After deploy
 
-### After deployment
-
-Call the warmup endpoint to pre-populate caches:
-
-```
-GET https://bryan-technical-afss-712513641417.australia-southeast1.run.app/api/warmup
-```
-
-This takes up to 5 minutes and eliminates cold-cache latency for the first users.
-
-### Environment variables on Cloud Run
-
-Set via the Cloud Run console or `--set-env-vars` flag:
-
-```
-SIMPRO_BASE_URL=https://redmen.simprosuite.com
-SIMPRO_TOKEN=<token>
-```
+Wait **10-13 minutes** for startup warmup to complete, then reload the dashboard.
