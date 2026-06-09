@@ -1,8 +1,8 @@
 # AFSS Backlog Tracker — Project Documentation
 
 **Version:** 2.0  
-**Deployed at:** https://bryan-technical-afss-712513641417.australia-southeast1.run.app  
-**GCP Project:** buoyant-purpose-475203-t9  
+**Deployed at:** https://bryan-technical-afss-418420976784.australia-southeast1.run.app  
+**GCP Project:** technical-afss  
 **Last Updated:** June 2026
 
 ---
@@ -330,7 +330,7 @@ Leave references tracked: **1** = Annual Leave, **2** = Sick/Personal Leave.
 
 Google Cloud Run, region: `australia-southeast1`  
 Service name: `bryan-technical-afss`  
-Project: `buoyant-purpose-475203-t9`  
+Project: `technical-afss`  
 Min instances: 1 (container never scales to zero)
 
 ### Before every deploy — sync live data
@@ -338,8 +338,8 @@ Min instances: 1 (container never scales to zero)
 Run these in PowerShell from the project root (`afss-backlog\`) to preserve manually-entered data:
 
 ```powershell
-Invoke-WebRequest -Uri "https://bryan-technical-afss-712513641417.australia-southeast1.run.app/api/intercompany" -OutFile "data\intercompany.json"
-Invoke-WebRequest -Uri "https://bryan-technical-afss-712513641417.australia-southeast1.run.app/api/afac-exclusions" -OutFile "data\afac-exclusions.json"
+Invoke-WebRequest -Uri "https://bryan-technical-afss-418420976784.australia-southeast1.run.app/api/intercompany" -OutFile "data\intercompany.json"
+Invoke-WebRequest -Uri "https://bryan-technical-afss-418420976784.australia-southeast1.run.app/api/afac-exclusions" -OutFile "data\afac-exclusions.json"
 ```
 
 These save the live intercompany hours and AFAC excluded dates into the Docker image so they survive the deploy.
@@ -348,7 +348,7 @@ These save the live intercompany hours and AFAC excluded dates into the Docker i
 
 ```powershell
 cd "C:\Users\Admin\.gemini\antigravity\scratch\afss backlog\afss-backlog"
-gcloud run deploy bryan-technical-afss --source . --region australia-southeast1 --timeout=300 --min-instances=1 --quiet
+gcloud run deploy bryan-technical-afss --source . --project=technical-afss --region australia-southeast1 --timeout=300 --min-instances=1 --quiet
 ```
 
 ### After deploy

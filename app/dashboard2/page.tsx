@@ -550,7 +550,7 @@ export default function Dashboard2Page() {
   return (
     <div className="flex flex-col bg-white">
       {/* Nav */}
-      <div className="flex items-center gap-2 px-4 py-2.5 bg-white border-b border-neutral-200 shrink-0">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2.5 bg-white border-b border-neutral-200 shrink-0">
         <Link href="/" className="text-sm text-blue-600 hover:underline font-medium shrink-0">← Backlog</Link>
         <select
           defaultValue="/dashboard2"
@@ -560,7 +560,7 @@ export default function Dashboard2Page() {
           <option value="/dashboard">Dashboard</option>
           <option value="/dashboard2">Dashboard (NO DATACOM)</option>
         </select>
-        <span className="flex-1 min-w-0 flex items-center gap-2 overflow-hidden">
+        <span className="flex-1 min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1 overflow-hidden">
           {loading && !hasData && <span className="text-xs text-blue-500 animate-pulse shrink-0">Loading…</span>}
           {updated && !loading && (
             <span className="text-xs text-neutral-400 shrink-0">Updated: {updated.toLocaleTimeString()}</span>
@@ -590,8 +590,8 @@ export default function Dashboard2Page() {
         </button>
       </div>
 
-      <div className="p-4 w-full">
-        <table className="border-collapse w-full table-fixed">
+      <div className="p-4 w-full overflow-x-auto">
+        <table className="border-collapse w-full table-fixed" style={{ minWidth: '860px' }}>
           <thead>
             {/* Row 1 */}
             <tr>
@@ -709,12 +709,12 @@ export default function Dashboard2Page() {
       </div>
 
       {/* Bottom section: Technical Team Supply + Technical Support Works side by side */}
-      <div className="px-4 pb-6 flex gap-6 items-start">
+      <div className="px-4 pb-6 flex flex-col xl:flex-row gap-6 items-start">
 
           {/* Technical Team Supply */}
-          <div style={{ minWidth: 520 }}>
+          <div className="w-full xl:w-auto xl:shrink-0">
             {team.length > 0 ? (<>
-            <table className="border-collapse text-sm" style={{ width: 520 }}>
+            <table className="border-collapse text-sm w-full xl:w-[520px]">
               <thead>
                 <tr>
                   <td rowSpan={2} className="border border-gray-400 px-3 py-3 font-bold text-base text-center align-middle" style={{ backgroundColor: "#c4b5fd", width: 160 }}>
@@ -973,15 +973,16 @@ export default function Dashboard2Page() {
               </table>
             </div>
             </>) : (
-              <div className="border border-gray-200 rounded px-6 py-8 text-center text-sm text-gray-400 animate-pulse" style={{ width: 520 }}>
+              <div className="border border-gray-200 rounded px-6 py-8 text-center text-sm text-gray-400 animate-pulse w-full xl:w-[520px]">
                 Loading team supply data…
               </div>
             )}
           </div>
 
           {/* Technical Support Works + Supply vs Demand */}
-          <div className="flex-1 flex flex-col gap-4">
-            <table className="border-collapse w-full text-sm">
+          <div className="flex-1 min-w-0 flex flex-col gap-4">
+            <div className="overflow-x-auto">
+            <table className="border-collapse w-full text-sm" style={{ minWidth: '600px' }}>
               <thead>
                 <tr>
                   <td colSpan={9} className="border border-gray-400 px-3 py-3 text-center font-bold text-base bg-white">
@@ -1039,6 +1040,7 @@ export default function Dashboard2Page() {
                 </tr>
               </tbody>
             </table>
+            </div>
             {/* Supply vs Demand */}
             {(() => {
               const allMembers   = [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam];
@@ -1068,7 +1070,7 @@ export default function Dashboard2Page() {
               const varianceStyle = { backgroundColor: "#fde68a" };
               return (
                 <div className="flex flex-col gap-4">
-                <div className="flex gap-4">
+                <div className="flex flex-col sm:flex-row gap-4">
                   {/* AFSS Audits Supply vs Demand */}
                   <table className="border-collapse text-sm flex-1">
                     <thead>
@@ -1127,7 +1129,7 @@ export default function Dashboard2Page() {
                   </table>
                 </div>
                 {/* AFAC Prospect Demand + Overall Demand VS Supply */}
-                <div className="flex gap-4">
+                <div className="flex flex-col sm:flex-row gap-4">
                 {/* AFAC Prospect Demand */}
                 <table className="border-collapse text-sm flex-1">
                   <thead>

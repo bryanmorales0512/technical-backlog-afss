@@ -1,5 +1,5 @@
 export async function register() {
-  if (process.env.NEXT_RUNTIME === "nodejs") {
+  if (process.env.NEXT_RUNTIME === "nodejs" && process.env.NODE_ENV !== "development") {
     const { warmAll } = await import("./app/lib/simpro");
     const { warmLeave } = await import("./app/api/leave/route");
     const { warmTechSupport } = await import("./app/api/tech-support/route");
