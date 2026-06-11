@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>AFSS Backlog Tracker — System Overview</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10pt; color: #1a1a2e; line-height: 1.45; background: #fff; }
+
+  /* COVER */
+  .cover {
+    page-break-after: always;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    height: 100vh; padding: 36px;
+    background: linear-gradient(160deg, #0f172a 0%, #1e3a5f 60%, #b91c1c 100%);
+    color: #fff; text-align: center;
+  }
+  .cover .eyebrow { font-size: 9.5pt; letter-spacing: 3px; text-transform: uppercase; color: #93c5fd; margin-bottom: 12px; }
+  .cover h1 { font-size: 30pt; font-weight: 900; letter-spacing: 1px; margin-bottom: 8px; }
+  .cover h2 { font-size: 13pt; font-weight: 300; color: #cbd5e1; margin-bottom: 18px; }
+  .cover .divider { width: 70px; height: 2px; background: rgba(255,255,255,0.3); margin: 0 auto 18px; border-radius: 2px; }
+  .cover .desc { font-size: 10.5pt; color: #94a3b8; max-width: 440px; line-height: 1.7; margin-bottom: 20px; }
+  .cover .badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .cover .badge { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 4px 12px; font-size: 9pt; font-weight: 600; }
+  .cover .meta { margin-top: 24px; font-size: 8.5pt; color: rgba(255,255,255,0.35); }
+
+  /* AUDIENCE DIVIDER PAGE */
+  .divider-page {
+    page-break-before: always; page-break-after: always;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    height: 100vh; text-align: center; padding: 30px;
+  }
+  .divider-page.nontechnical { background: #eff6ff; }
+  .divider-page.technical { background: #f0fdf4; }
+  .divider-page .part-label { font-size: 9.5pt; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 12px; }
+  .divider-page.nontechnical .part-label { color: #1d4ed8; }
+  .divider-page.technical .part-label { color: #15803d; }
+  .divider-page h2 { font-size: 24pt; font-weight: 900; color: #0f172a; margin-bottom: 12px; }
+  .divider-page p { font-size: 11pt; color: #475569; max-width: 380px; line-height: 1.7; }
+
+  /* TOC */
+  .toc-page { padding: 24px 36px; }
+  .toc-page h2 { font-size: 18pt; font-weight: 800; color: #0f172a; border-bottom: 3px solid #b91c1c; padding-bottom: 8px; margin-bottom: 16px; }
+  .toc-group { margin-bottom: 14px; }
+  .toc-group-title { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #b91c1c; margin-bottom: 6px; }
+  .toc-item { display: flex; align-items: baseline; padding: 3px 0; border-bottom: 1px dotted #e5e7eb; }
+  .toc-num { font-size: 8.5pt; font-weight: 700; color: #6b7280; width: 28px; flex-shrink: 0; }
+  .toc-name { font-size: 9.5pt; color: #1f2937; flex: 1; }
+
+  /* SECTION PAGES */
+  section { padding: 16px 28px 12px; }
+  .section-header { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #f1f5f9; }
+  .section-header .section-part { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 3px; }
+  .section-header.nt .section-part { color: #1d4ed8; }
+  .section-header.tech .section-part { color: #15803d; }
+  .section-header h2 { font-size: 15pt; font-weight: 800; color: #0f172a; }
+
+  h3 { font-size: 10.5pt; font-weight: 700; color: #1e3a5f; margin: 10px 0 5px; border-left: 4px solid #2563eb; padding-left: 8px; }
+  h4 { font-size: 9.5pt; font-weight: 700; color: #374151; margin: 8px 0 3px; }
+  p { margin: 0 0 5px; font-size: 10pt; color: #374151; }
+  ul, ol { margin: 4px 0 7px; padding-left: 20px; }
+  li { margin: 2px 0; font-size: 10pt; color: #374151; }
+  li strong { color: #0f172a; }
+
+  /* TABLES */
+  table { border-collapse: collapse; width: 100%; margin: 7px 0 10px; font-size: 9pt; }
+  thead th { background: #1e3a5f; color: #fff; padding: 5px 8px; text-align: left; font-size: 8.5pt; font-weight: 600; }
+  td { border: 1px solid #e2e8f0; padding: 4px 8px; vertical-align: top; color: #374151; }
+  tr:nth-child(even) td { background: #f8fafc; }
+
+  /* CODE */
+  code { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 3px; padding: 1px 4px; font-family: 'Consolas', monospace; font-size: 8pt; color: #be185d; }
+  pre { background: #0f172a; color: #e2e8f0; border-radius: 5px; padding: 9px 11px; margin: 5px 0 8px; font-size: 8pt; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+  pre code { background: none; border: none; color: inherit; padding: 0; font-size: inherit; }
+
+  /* CALLOUT BOXES */
+  .box { border-radius: 5px; padding: 7px 11px; margin: 7px 0; }
+  .box.info { background: #eff6ff; border-left: 4px solid #1d4ed8; }
+  .box.warn { background: #fefce8; border-left: 4px solid #ca8a04; }
+  .box.tip  { background: #f0fdf4; border-left: 4px solid #16a34a; }
+  .box .box-title { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+  .box.info .box-title { color: #1d4ed8; }
+  .box.warn .box-title { color: #ca8a04; }
+  .box.tip  .box-title { color: #16a34a; }
+  .box p { font-size: 9.5pt; margin: 0; }
+
+  /* AUTOMATION CARDS */
+  .auto-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 11px; margin: 6px 0; }
+  .auto-card .auto-title { font-size: 10pt; font-weight: 700; color: #1e3a5f; margin-bottom: 3px; }
+  .auto-card p { font-size: 9.5pt; color: #4b5563; margin: 0; }
+
+  /* PAGE STEPS */
+  .page-row { display: flex; gap: 10px; margin: 7px 0 10px; }
+  .page-card { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px; padding: 8px 10px; }
+  .page-card .page-url { font-family: monospace; font-size: 8pt; color: #6b7280; margin-bottom: 3px; }
+  .page-card .page-name { font-size: 9.5pt; font-weight: 700; color: #0f172a; margin-bottom: 3px; }
+  .page-card p { font-size: 9pt; color: #4b5563; margin: 0; }
+
+  /* SCREENSHOT PLACEHOLDERS */
+  .ph { border: 2px dashed #94a3b8; border-radius: 8px; background: #f8fafc; margin: 12px 0; padding: 0; overflow: hidden; }
+  .ph-header { background: #e2e8f0; padding: 7px 14px; display: flex; align-items: center; gap: 8px; }
+  .ph-icon { font-size: 13pt; }
+  .ph-title { font-size: 9pt; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.8px; }
+  .ph-tag { margin-left: auto; font-size: 7.5pt; font-weight: 700; border-radius: 10px; padding: 2px 8px; }
+  .ph-tag.system { background: #dbeafe; color: #1d4ed8; }
+  .ph-tag.simpro { background: #fef9c3; color: #854d0e; }
+  .ph-body { padding: 18px 14px; text-align: center; }
+  .ph-body p { font-size: 9pt; color: #6b7280; margin: 0; }
+  .ph-hint { display: inline-block; margin-top: 6px; font-size: 8pt; color: #94a3b8; font-style: italic; }
+  .ph-size { font-size: 8pt; color: #cbd5e1; margin-top: 4px; }
+
+  /* FOOTER */
+  .page-footer { position: fixed; bottom: 6px; width: 100%; text-align: center; font-size: 7.5pt; color: #94a3b8; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════ COVER ══ -->
+<div class="cover">
+  <div class="eyebrow">Red Adair — Technical AFSS Team</div>
+  <h1>AFSS Backlog Tracker</h1>
+  <h2>System Overview &amp; Documentation</h2>
+  <div class="divider"></div>
+  <div class="desc">
+    A complete reference for both operational users and technical staff — covering what
+    the system does, what it automates, and how it is built and maintained.
+  </div>
+  <div class="badges">
+    <span class="badge">Version 2.0</span>
+    <span class="badge">June 2026</span>
+    <span class="badge">Next.js 16</span>
+    <span class="badge">Google Cloud Run</span>
+    <span class="badge">SimPRO API</span>
+  </div>
+  <div class="meta">
+    Live URL: https://bryan-technical-afss-712513641417.australia-southeast1.run.app<br/>
+    Contact: bryan.morales@redadair.com.au
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ TOC ══ -->
+<div class="toc-page">
+  <h2>Table of Contents</h2>
+  <div class="toc-group">
+    <div class="toc-group-title">For Everyone (Non-Technical)</div>
+    <div class="toc-item"><span class="toc-num">1</span><span class="toc-name">What Is This System?</span></div>
+    <div class="toc-item"><span class="toc-num">2</span><span class="toc-name">What Problem Does It Solve?</span></div>
+    <div class="toc-item"><span class="toc-num">3</span><span class="toc-name">What Does It Automate? (Plain English)</span></div>
+    <div class="toc-item"><span class="toc-num">4</span><span class="toc-name">Who Can Use It?</span></div>
+    <div class="toc-item"><span class="toc-num">5</span><span class="toc-name">How to Log In</span></div>
+    <div class="toc-item"><span class="toc-num">6</span><span class="toc-name">Pages at a Glance</span></div>
+  </div>
+  <div class="toc-group">
+    <div class="toc-group-title">For Technical Staff</div>
+    <div class="toc-item"><span class="toc-num">7</span><span class="toc-name">Architecture Overview</span></div>
+    <div class="toc-item"><span class="toc-num">8</span><span class="toc-name">Tech Stack</span></div>
+    <div class="toc-item"><span class="toc-num">9</span><span class="toc-name">What Gets Automated — Technical Detail</span></div>
+    <div class="toc-item"><span class="toc-num">10</span><span class="toc-name">API Routes Reference</span></div>
+    <div class="toc-item"><span class="toc-num">11</span><span class="toc-name">Caching Strategy</span></div>
+    <div class="toc-item"><span class="toc-num">12</span><span class="toc-name">Authentication &amp; Access Control</span></div>
+    <div class="toc-item"><span class="toc-num">13</span><span class="toc-name">Environment Variables</span></div>
+    <div class="toc-item"><span class="toc-num">14</span><span class="toc-name">Deployment Process</span></div>
+    <div class="toc-item"><span class="toc-num">15</span><span class="toc-name">Data Files &amp; Key Business Rules</span></div>
+  </div>
+</div>
+
+<!-- ═══════════════════ AUDIENCE DIVIDER: NON-TECHNICAL ══ -->
+<div class="divider-page nontechnical">
+  <div class="part-label">Part One</div>
+  <h2>For Everyone</h2>
+  <p>A plain-English explanation of what the AFSS Backlog Tracker does, what it automates, and how to use it — no technical background required.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════ S1 ══ -->
+<section class="no-break">
+  <div class="section-header nt">
+    <div class="section-part">Section 1 — Non-Technical</div>
+    <h2>What Is This System?</h2>
+  </div>
+  <p>
+    The <strong>AFSS Backlog Tracker</strong> is an internal web dashboard built for Red Adair's fire safety
+    compliance team. It gives management and technical staff a single, always-up-to-date view of every
+    CFSP (Combined Fire Safety Provisions) audit job across three of the company's operating entities.
+  </p>
+  <table>
+    <thead><tr><th>Entity</th><th>What They Do</th></tr></thead>
+    <tbody>
+      <tr><td><strong>RM AFSS</strong> (Red Men)</td><td>Primary AFSS audit team</td></tr>
+      <tr><td><strong>CHUBB / AFAC</strong></td><td>AFAC-branded audit stream</td></tr>
+      <tr><td><strong>AE Evac</strong></td><td>Evacuation procedure audits</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Think of it as a live <strong>"job board" combined with a capacity planner</strong> — showing not just what
+    work exists, but also how much time the team has left to do it this month.
+  </p>
+</section>
+
+<!-- ═══════════════════════════════════════════ S2 ══ -->
+<section>
+  <div class="section-header nt">
+    <div class="section-part">Section 2 — Non-Technical</div>
+    <h2>What Problem Does It Solve?</h2>
+  </div>
+  <p>Before this system existed, answering these questions required manually logging into SimPRO (Red Adair's job management software) and pulling separate reports:</p>
+  <ul>
+    <li>How many audit jobs are still in the backlog?</li>
+    <li>Which jobs are scheduled vs. unscheduled?</li>
+    <li>How many available hours does the team have left this month?</li>
+    <li>How much non-audit technical support work is also scheduled?</li>
+    <li>What is the expected AFAC audit demand over the coming weeks?</li>
+  </ul>
+  <p>
+    The AFSS Backlog Tracker <strong>pulls all of that data automatically</strong> and presents it in one
+    place, refreshed throughout the day — so management can make staffing and scheduling decisions
+    without manual report-pulling.
+  </p>
+</section>
+
+<!-- ═══════════════════════════════════════════ S3 ══ -->
+<section>
+  <div class="section-header nt">
+    <div class="section-part">Section 3 — Non-Technical</div>
+    <h2>What Does It Automate? (Plain English)</h2>
+  </div>
+  <p>Here is every task the system performs automatically on your behalf:</p>
+
+  <div class="auto-card">
+    <div class="auto-title">Job Data Collection</div>
+    <p>Every hour, the system quietly connects to SimPRO and downloads the latest list of pending and in-progress CFSP audit jobs for all three companies. You never have to manually export or refresh a report.</p>
+  </div>
+
+  <div class="auto-card">
+    <div class="auto-title">Team Availability Calculation</div>
+    <p>The system works out how many billable hours each auditor has left in the current month by starting with their standard working hours, then subtracting approved leave booked in SimPRO and NSW public holidays for the month. This gives a real, usable capacity number — not a theoretical one.</p>
+  </div>
+
+  <div class="auto-card">
+    <div class="auto-title">Technical Support Work Tracking</div>
+    <p>The system monitors the jobs scheduled to the tech team that are not CFSP audits (e.g., internal billable work, quality assurance tasks). It automatically categorises each job as: <strong>Other Billable</strong> (work billed to external customers), <strong>Invested Time</strong> (internal work), or <strong>QA</strong> (quality assurance activity).</p>
+  </div>
+
+  <div class="auto-card">
+    <div class="auto-title">AFAC Demand Forecasting</div>
+    <p>The system looks at what AFAC/CHUBB audit work Muhammad Soban was doing at the same time last year and uses that as a forecast for the coming weeks. This helps the team anticipate demand spikes before they arrive.</p>
+  </div>
+
+  <div class="auto-card">
+    <div class="auto-title">Instant Updates When Schedules Change</div>
+    <p>When someone changes a schedule in SimPRO, SimPRO sends an automatic notification to this system. The system then refreshes its data in the background — so the next time you load the dashboard, the numbers are already up to date. No manual action needed.</p>
+  </div>
+
+  <div class="auto-card">
+    <div class="auto-title">Login Security</div>
+    <p>The system automatically checks that anyone trying to log in is a member of the approved Red Adair Google Workspace group. People outside that group cannot access the dashboard, even if they have a Google account.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════ S4+5 ══ -->
+<section>
+  <div class="section-header nt">
+    <div class="section-part">Section 4 — Non-Technical</div>
+    <h2>Who Can Use It?</h2>
+  </div>
+  <p>
+    Access is restricted to members of the Google Workspace group:
+    <code>technicalafss-deployment@redadair.com.au</code>
+  </p>
+  <p>If you need access, ask your administrator to add your Red Adair Google account to that group.</p>
+
+  <div style="margin-top:16px;">
+    <div class="section-header nt">
+      <div class="section-part">Section 5 — Non-Technical</div>
+      <h2>How to Log In</h2>
+    </div>
+    <ol>
+      <li>Open the live URL in your browser.</li>
+      <li>You will see a login page — click <strong>Sign in with Google</strong>.</li>
+      <li>Choose your <code>@redadair.com.au</code> Google account.</li>
+      <li>If your account is in the approved group, you will be taken straight to the dashboard.</li>
+      <li>If access is denied, contact your administrator.</li>
+    </ol>
+    <div class="box warn" style="margin-top:12px;">
+      <div class="box-title">Warmup Notice</div>
+      <p>After a new deployment, the system takes approximately 10–13 minutes to warm up its data. During that time the dashboard may be slow or show a loading state. This is normal.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════ S6 ══ -->
+<section>
+  <div class="section-header nt">
+    <div class="section-part">Section 6 — Non-Technical</div>
+    <h2>Pages at a Glance</h2>
+  </div>
+  <div class="page-row">
+    <div class="page-card">
+      <div class="page-url">/ (Home)</div>
+      <div class="page-name">Backlog</div>
+      <p>Full list of all pending and in-progress audit jobs, filterable by company, stage, and status. Click any row to open the job directly in SimPRO.</p>
+    </div>
+    <div class="page-card">
+      <div class="page-url">/dashboard</div>
+      <div class="page-name">Dashboard</div>
+      <p>Management summary: job counts, team hours, technical support work, and AFAC demand forecast.</p>
+    </div>
+  </div>
+  <div class="page-row">
+    <div class="page-card">
+      <div class="page-url">/dashboard2</div>
+      <div class="page-name">Dashboard (No DATACOM)</div>
+      <p>Same as Dashboard but excludes DATACOM cost-centre jobs from the Other Billable totals.</p>
+    </div>
+    <div class="page-card">
+      <div class="page-url">/progress</div>
+      <div class="page-name">Progress</div>
+      <p>Progress tracking view — jobs that are currently in-progress or awaiting results release.</p>
+    </div>
+  </div>
+
+  <div class="ph">
+    <div class="ph-header">
+      <span class="ph-icon">📸</span>
+      <span class="ph-title">Screenshot — AFSS Backlog Page ( / )</span>
+      <span class="ph-tag system">System</span>
+    </div>
+    <div class="ph-body">
+      <p>Insert screenshot of the main Backlog page showing the full job list table,<br/>company filter tabs, status colour coding, and column headers.</p>
+      <span class="ph-hint">URL: https://bryan-technical-afss-712513641417.australia-southeast1.run.app/</span>
+    </div>
+  </div>
+
+  <div class="ph">
+    <div class="ph-header">
+      <span class="ph-icon">📸</span>
+      <span class="ph-title">Screenshot — AFSS Dashboard ( /dashboard )</span>
+      <span class="ph-tag system">System</span>
+    </div>
+    <div class="ph-body">
+      <p>Insert screenshot of the Dashboard page showing the Supply vs Demand tables,<br/>Technical Team Supply hours, Technical Support Works, and AFAC Prospect Demand.</p>
+      <span class="ph-hint">URL: https://bryan-technical-afss-712513641417.australia-southeast1.run.app/dashboard</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ AUDIENCE DIVIDER: TECHNICAL ══ -->
+<div class="divider-page technical">
+  <div class="part-label">Part Two</div>
+  <h2>For Technical Staff</h2>
+  <p>Architecture, API reference, caching, authentication, deployment, and all automation details for engineers maintaining this system.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════ S7 ══ -->
+<section class="no-break">
+  <div class="section-header tech">
+    <div class="section-part">Section 7 — Technical</div>
+    <h2>Architecture Overview</h2>
+  </div>
+  <pre>Browser  →  Next.js App Router (Cloud Run, australia-southeast1)
+                │
+                ├── Middleware: Auth gate (NextAuth + Google Workspace group check)
+                │
+                ├── Pages: React 19 + Tailwind CSS v4
+                │
+                └── API Routes (16 endpoints)
+                        │
+                        ├── SimPRO REST API v1.0  ← primary data source
+                        ├── date.nager.at          ← NSW public holidays
+                        ├── Google Workspace API   ← group membership check
+                        └── Disk cache (/tmp or CACHE_DIR)</pre>
+  <table style="margin-top:10px;">
+    <thead><tr><th>Property</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Platform</td><td>Google Cloud Run — Node.js 22 / Alpine Linux</td></tr>
+      <tr><td>Container</td><td>Multi-stage Docker build (deps → builder → runner)</td></tr>
+      <tr><td>Next.js output mode</td><td>Standalone</td></tr>
+      <tr><td>Cache headers</td><td><code>no-store</code> on all responses (caching is server-side only)</td></tr>
+      <tr><td>Region</td><td>australia-southeast1 (Sydney)</td></tr>
+      <tr><td>Timezone</td><td>AEST — UTC+10 — all dates and timestamps</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════ S8 ══ -->
+<section>
+  <div class="section-header tech">
+    <div class="section-part">Section 8 — Technical</div>
+    <h2>Tech Stack</h2>
+  </div>
+  <table>
+    <thead><tr><th>Layer</th><th>Technology</th><th>Version</th></tr></thead>
+    <tbody>
+      <tr><td>Framework</td><td>Next.js (App Router)</td><td>16</td></tr>
+      <tr><td>UI Library</td><td>React</td><td>19</td></tr>
+      <tr><td>Styling</td><td>Tailwind CSS</td><td>v4</td></tr>
+      <tr><td>Language</td><td>TypeScript</td><td>5</td></tr>
+      <tr><td>Runtime</td><td>Node.js (Alpine Linux)</td><td>22</td></tr>
+      <tr><td>Authentication</td><td>NextAuth</td><td>v4</td></tr>
+      <tr><td>Auth Provider</td><td>Google OAuth 2.0 + Workspace Directory API</td><td>—</td></tr>
+      <tr><td>Primary Data Source</td><td>SimPRO REST API</td><td>v1.0</td></tr>
+      <tr><td>Holiday Data</td><td>date.nager.at (NSW Australia)</td><td>—</td></tr>
+      <tr><td>Cloud Platform</td><td>Google Cloud Run</td><td>—</td></tr>
+      <tr><td>Containerisation</td><td>Docker (multi-stage Alpine build)</td><td>—</td></tr>
+      <tr><td>PDF Generation</td><td>Puppeteer</td><td>25.x</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════ S9 ══ -->
+<section>
+  <div class="section-header tech">
+    <div class="section-part">Section 9 — Technical</div>
+    <h2>What Gets Automated — Technical Detail</h2>
+  </div>
+
+  <h3>9.1 — Cache Warming on Startup (<code>instrumentation.ts</code>)</h3>
+  <p>On every Cloud Run deployment, <code>instrumentation.ts</code> runs <strong>before the server accepts any traffic</strong> and pre-warms all caches sequentially to prevent slow first loads:</p>
+  <ol>
+    <li>Fetch SimPRO job data for Company 1 (RM AFSS)</li>
+    <li>Wait 60 seconds — SimPRO rate limit recovery</li>
+    <li>Fetch SimPRO job data for Company 8 (CHUBB/AFAC)</li>
+    <li>Warm leave schedule, tech support, and AFAC prospect data in parallel</li>
+  </ol>
+  <div class="box info"><div class="box-title">Note</div><p>Company 10 (AE Evac) is excluded from warmup due to SimPRO rate limit constraints. Total warmup time: <strong>10–13 minutes</strong>.</p></div>
+
+  <div class="ph">
+    <div class="ph-header">
+      <span class="ph-icon">📸</span>
+      <span class="ph-title">Screenshot — SimPRO Job List (source for /api/data)</span>
+      <span class="ph-tag simpro">SimPRO</span>
+    </div>
+    <div class="ph-body">
+      <p>Insert screenshot of the SimPRO job list filtered by Stage = Pending/Progress and<br/>Technician = "A CFSP ONLY" for Company 1 (RM AFSS). This is the raw data the system reads.</p>
+      <span class="ph-hint">SimPRO → Jobs → Filter: Stage = Pending, Technician = A CFSP ONLY, Company = RM AFSS</span>
+    </div>
+  </div>
+
+  <h3>9.2 — SimPRO Webhook Integration (<code>/api/webhook/simpro</code>)</h3>
+  <p>SimPRO sends a POST to <code>/api/webhook/simpro</code> whenever a schedule event changes. The handler:</p>
+  <ol>
+    <li>Clears tech support cache files from disk</li>
+    <li>Kicks off a background rebuild of fresh tech support data</li>
+    <li>Returns 200 immediately — the rebuild runs asynchronously</li>
+  </ol>
+
+  <h3>9.3 — Team Availability Calculation (<code>/api/leave</code>)</h3>
+  <ul>
+    <li>Fetches leave records for: Muhammad Soban (ID 1581), Ryan Gordon (ID 15), Josh Roger (ID 1753)</li>
+    <li>Fetches NSW public holidays from <code>date.nager.at</code> for the current year (cached permanently on disk)</li>
+    <li>Fallback: hardcoded NSW holidays for 2025–2026 if the API is unreachable</li>
+    <li>Formula: remaining hours = (working days remaining − leave days − public holiday days) × daily hours</li>
+    <li>After 3 PM, today is excluded from the remaining working days count</li>
+  </ul>
+
+  <div class="ph">
+    <div class="ph-header">
+      <span class="ph-icon">📸</span>
+      <span class="ph-title">Screenshot — SimPRO Schedule / Leave View (source for /api/leave)</span>
+      <span class="ph-tag simpro">SimPRO</span>
+    </div>
+    <div class="ph-body">
+      <p>Insert screenshot of the SimPRO schedule/calendar showing leave blocks for<br/>Muhammad Soban, Ryan Gordon, and Josh Roger. This is where leave hours are read from.</p>
+      <span class="ph-hint">SimPRO → Schedule → Filter by Staff: Soban / Gordon / Roger — look for Annual Leave / Sick Leave blocks</span>
+    </div>
+  </div>
+
+  <h3>9.4 — Technical Support Work Categorisation (<code>/api/tech-support</code>)</h3>
+  <p>Mirrors SimPRO's "Schedule Breakdown" report exactly. For each scheduled block in the tech team's calendar:</p>
+  <ul>
+    <li>Filters by 38 defined AFSS cost centre IDs</li>
+    <li>Classifies customer type: Internal (Redmen Fire, AFAC, Adair, Z SAFE) → <strong>Invested Time</strong>; External → <strong>Other Billable</strong>; QA cost centres → <strong>Quality Assurance</strong></li>
+    <li>Cache TTLs: OB/IT = 5 minutes, QA = 1 hour</li>
+    <li>Force rebuild: append <code>?force=1</code></li>
+    <li>Debug export: <code>/api/tech-support?debug=list&amp;year=Y&amp;month=M</code></li>
+  </ul>
+
+  <div class="ph">
+    <div class="ph-header">
+      <span class="ph-icon">📸</span>
+      <span class="ph-title">Screenshot — SimPRO Schedule Breakdown Report (source for /api/tech-support)</span>
+      <span class="ph-tag simpro">SimPRO</span>
+    </div>
+    <div class="ph-body">
+      <p>Insert screenshot of the SimPRO Schedule Breakdown report filtered by the 3 tech team members<br/>for the current month. This is the exact report the system replicates automatically.</p>
+      <span class="ph-hint">SimPRO → Reports → Schedule Breakdown → Staff: Soban, Gordon, Roger → Date: current month</span>
+    </div>
+  </div>
+
+  <h3>9.5 — AFAC Prospect Demand Forecasting (<code>/api/afac-prospect</code>)</h3>
+  <ul>
+    <li>Uses Muhammad Soban's schedule from the same date range last year as a proxy for expected demand</li>
+    <li>Supports date exclusions stored in <code>data/afac-exclusions.json</code></li>
+    <li>Cache TTL: 30 minutes</li>
+    <li>Returns: job count, estimated hours, date range</li>
+  </ul>
+
+  <div class="ph">
+    <div class="ph-header">
+      <span class="ph-icon">📸</span>
+      <span class="ph-title">Screenshot — SimPRO Soban Schedule Last Year (source for /api/afac-prospect)</span>
+      <span class="ph-tag simpro">SimPRO</span>
+    </div>
+    <div class="ph-body">
+      <p>Insert screenshot of Muhammad Soban's schedule in SimPRO for the same period last year.<br/>This is the historical data the system uses to forecast AFAC demand.</p>
+      <span class="ph-hint">SimPRO → Schedule → Staff: Muhammad Soban → Date: same month, previous year → filter AFSS-Audit jobs only</span>
+    </div>
+  </div>
+
+  <h3>9.6 — SimPRO Rate Limit Handling</h3>
+  <p>SimPRO enforces strict per-token rate limits (HTTP 429). The app implements:</p>
+  <ul>
+    <li>Exponential backoff: 1s → 2s → 4s → 8s → … up to 8 retry attempts</li>
+    <li>Sequential company fetches (not parallel) during warmup to avoid exhausting the retry budget</li>
+  </ul>
+
+  <h3>9.7 — Authentication Middleware (<code>middleware.ts</code>)</h3>
+  <p>All routes except <code>/login</code> and <code>/api/auth/*</code> are gated. The middleware:</p>
+  <ol>
+    <li>Checks for a valid NextAuth session cookie</li>
+    <li>Validates the user's email is a member of <code>technicalafss-deployment@redadair.com.au</code> via the Google Workspace Directory API</li>
+    <li>Uses service account <code>afss-group-checker@technical-afss.iam.gserviceaccount.com</code> with subject impersonation for Directory API calls</li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════ S10 ══ -->
+<section>
+  <div class="section-header tech">
+    <div class="section-part">Section 10 — Technical</div>
+    <h2>API Routes Reference</h2>
+  </div>
+  <table>
+    <thead><tr><th>Endpoint</th><th>Method</th><th>Description</th><th>Cache TTL</th></tr></thead>
+    <tbody>
+      <tr><td><code>/api/data?company=N&amp;stage=S</code></td><td>GET</td><td>AFSS audit job list from SimPRO</td><td>1 hour</td></tr>
+      <tr><td><code>/api/data?force=1</code></td><td>GET</td><td>Force live rebuild of job cache</td><td>—</td></tr>
+      <tr><td><code>/api/leave</code></td><td>GET</td><td>Team leave + NSW public holidays</td><td>1 hour</td></tr>
+      <tr><td><code>/api/tech-support</code></td><td>GET</td><td>OB / IT / QA stats</td><td>5 min (OB/IT), 1 hr (QA)</td></tr>
+      <tr><td><code>/api/tech-support?force=1</code></td><td>GET</td><td>Force rebuild of tech support cache</td><td>—</td></tr>
+      <tr><td><code>/api/tech-support?debug=list&amp;year=Y&amp;month=M</code></td><td>GET</td><td>Full schedule block list (no cache)</td><td>—</td></tr>
+      <tr><td><code>/api/afac-prospect</code></td><td>GET</td><td>AFAC prospect demand forecast</td><td>30 min</td></tr>
+      <tr><td><code>/api/afac-exclusions</code></td><td>GET / POST</td><td>Read or update AFAC excluded dates</td><td>No cache</td></tr>
+      <tr><td><code>/api/intercompany</code></td><td>GET / POST</td><td>Read or update intercompany hours</td><td>No cache</td></tr>
+      <tr><td><code>/api/extra-team</code></td><td>GET</td><td>Team member metadata</td><td>—</td></tr>
+      <tr><td><code>/api/extra-team/search</code></td><td>GET</td><td>Search team members</td><td>—</td></tr>
+      <tr><td><code>/api/jobs</code></td><td>GET</td><td>Job detail</td><td>—</td></tr>
+      <tr><td><code>/api/progress</code></td><td>GET</td><td>Progress tracking data</td><td>—</td></tr>
+      <tr><td><code>/api/warmup</code></td><td>GET</td><td>Manually trigger full cache warm</td><td>—</td></tr>
+      <tr><td><code>/api/webhook/simpro</code></td><td>POST / GET</td><td>SimPRO schedule change webhook</td><td>—</td></tr>
+      <tr><td><code>/api/auth/[...nextauth]</code></td><td>GET / POST</td><td>NextAuth OAuth callbacks</td><td>—</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Company values:</strong> <code>1</code> = RM AFSS &nbsp;|&nbsp; <code>8</code> = CHUBB/AFAC &nbsp;|&nbsp; <code>10</code> = AE Evac</p>
+  <p><strong>Stage values:</strong> <code>Pending</code> or <code>Progress</code></p>
+</section>
+
+<!-- ═══════════════════════════════════════════ S11 ══ -->
+<section>
+  <div class="section-header tech">
+    <div class="section-part">Section 11 — Technical</div>
+    <h2>Caching Strategy</h2>
+  </div>
+  <p>All caching is disk-based. In development the location defaults to <code>os.tmpdir()</code>. In production, <code>CACHE_DIR</code> points to a GCS-mounted volume for persistence across container restarts.</p>
+  <table>
+    <thead><tr><th>Cache</th><th>File Pattern</th><th>TTL</th></tr></thead>
+    <tbody>
+      <tr><td>AFSS audit jobs</td><td><code>/tmp/afss-v4-{company}-{stage}-cache.json</code></td><td>1 hour</td></tr>
+      <tr><td>Team leave + holidays</td><td><code>/tmp/afss-leave-cache-v2.json</code></td><td>1 hour</td></tr>
+      <tr><td>Tech support OB/IT</td><td><code>/tmp/afss-tech-support-v84-{year}-{month}.json</code></td><td>5 minutes</td></tr>
+      <tr><td>Tech support QA</td><td><code>/tmp/afss-qa-v1.json</code></td><td>1 hour</td></tr>
+      <tr><td>AFAC prospect demand</td><td><code>/tmp/afss-afac-prospect-{year}-{month}.json</code></td><td>30 minutes</td></tr>
+      <tr><td>NSW public holidays</td><td><code>/tmp/afss-public-holidays-nsw-{year}.json</code></td><td>Permanent (never evicted)</td></tr>
+    </tbody>
+  </table>
+  <div class="box info"><div class="box-title">GCS Cache Status</div><p><code>gcsCache.ts</code> is present in the codebase but currently disabled. The disk cache is the active caching layer.</p></div>
+</section>
+
+<!-- ═══════════════════════════════════════════ S12 ══ -->
+<section>
+  <div class="section-header tech">
+    <div class="section-part">Section 12 — Technical</div>
+    <h2>Authentication &amp; Access Control</h2>
+  </div>
+  <table>
+    <thead><tr><th>Step</th><th>Mechanism</th></tr></thead>
+    <tbody>
+      <tr><td>Login</td><td>Google OAuth 2.0 via NextAuth v4</td></tr>
+      <tr><td>Group check</td><td>Google Workspace Directory API (<code>admin.googleapis.com</code>)</td></tr>
+      <tr><td>Allowed group</td><td><code>technicalafss-deployment@redadair.com.au</code></td></tr>
+      <tr><td>Service account</td><td><code>afss-group-checker@technical-afss.iam.gserviceaccount.com</code></td></tr>
+      <tr><td>Admin impersonation</td><td><code>bryan.morales@redadair.com.au</code></td></tr>
+      <tr><td>Session storage</td><td>NextAuth JWT (cookie-based)</td></tr>
+      <tr><td>Middleware scope</td><td>All routes except <code>/login</code> and <code>/api/auth/*</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════ S13 ══ -->
+<section>
+  <div class="section-header tech">
+    <div class="section-part">Section 13 — Technical</div>
+    <h2>Environment Variables</h2>
+  </div>
+  <pre># SimPRO
+SIMPRO_BASE_URL=https://redmen.simprosuite.com
+SIMPRO_TOKEN=&lt;bearer token&gt;
+
+# Google OAuth (NextAuth)
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+
+# NextAuth
+NEXTAUTH_SECRET=...
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_URL_PRODUCTION=https://&lt;cloud-run-url&gt;
+
+# Google Workspace service account
+GOOGLE_SERVICE_ACCOUNT_EMAIL=afss-group-checker@technical-afss.iam.gserviceaccount.com
+GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----...
+GOOGLE_ADMIN_EMAIL=bryan.morales@redadair.com.au
+
+# Optional — production only
+CACHE_DIR=/path/to/gcs-volume</pre>
+  <div class="box warn"><div class="box-title">Security Note</div><p>All secrets are set in Cloud Run as secret environment variables. Never commit them to source control. The SIMPRO_TOKEN is automatically stripped of any leading UTF-8 BOM character on load.</p></div>
+</section>
+
+<!-- ═══════════════════════════════════════════ S14 ══ -->
+<section>
+  <div class="section-header tech">
+    <div class="section-part">Section 14 — Technical</div>
+    <h2>Deployment Process</h2>
+  </div>
+
+  <h3>Pre-Deploy — Sync Persistent Data from Production</h3>
+  <pre>Invoke-WebRequest -Uri "https://&lt;prod-url&gt;/api/intercompany" -OutFile "data\intercompany.json"
+Invoke-WebRequest -Uri "https://&lt;prod-url&gt;/api/afac-exclusions" -OutFile "data\afac-exclusions.json"
+git add data/
+git commit -m "Sync persistent data before deploy"</pre>
+
+  <h3>Deploy to Google Cloud Run</h3>
+  <pre>gcloud run deploy bryan-technical-afss \
+  --source . \
+  --region australia-southeast1 \
+  --timeout=300 \
+  --min-instances=1 \
+  --quiet</pre>
+
+  <h3>Post-Deploy Checklist</h3>
+  <ol>
+    <li>Wait <strong>10–13 minutes</strong> for <code>instrumentation.ts</code> warmup to complete</li>
+    <li>Reload the dashboard and verify data is displaying correctly</li>
+    <li>Check Cloud Run logs if the warmup appears to stall</li>
+  </ol>
+
+  <h3>Local Development</h3>
+  <pre>npm install
+cp .env.local.example .env.local   # fill in credentials
+npm run dev                         # starts on http://localhost:3000</pre>
+</section>
+
+<!-- ═══════════════════════════════════════════ S15 ══ -->
+<section>
+  <div class="section-header tech">
+    <div class="section-part">Section 15 — Technical</div>
+    <h2>Data Files &amp; Key Business Rules</h2>
+  </div>
+
+  <h3>Persistent Data Files (<code>data/</code>)</h3>
+  <p>These JSON files are tracked in git and hold state that must survive between deployments. Because Cloud Run containers are ephemeral, any data written to <code>/tmp</code> at runtime is lost on restart — these three files are the only persistent state, and must be synced before each deployment (see Section 14).</p>
+  <table>
+    <thead><tr><th>File</th><th>Purpose</th><th>Editable Via</th></tr></thead>
+    <tbody>
+      <tr><td><code>data/intercompany.json</code></td><td>Intercompany hours for RM, AE, and FIA</td><td>Dashboard UI or <code>POST /api/intercompany</code></td></tr>
+      <tr><td><code>data/afac-exclusions.json</code></td><td>Dates excluded from AFAC demand forecasts</td><td>Dashboard UI or <code>POST /api/afac-exclusions</code></td></tr>
+      <tr><td><code>data/extra-team-members.json</code></td><td>Supplementary team metadata</td><td>Direct file edit, then redeploy</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Key Business Rules — Quick Reference</h3>
+  <table>
+    <thead><tr><th>Rule</th><th>Detail</th></tr></thead>
+    <tbody>
+      <tr><td>Job filter — Companies 1 &amp; 10</td><td>Only jobs assigned to technician "A CFSP ONLY" (ID 1126)</td></tr>
+      <tr><td>Job filter — Company 8</td><td>All jobs, no technician filter</td></tr>
+      <tr><td>Default job price</td><td>$330 if SimPRO total is blank</td></tr>
+      <tr><td>Default job hours</td><td>2 hours if SimPRO estimated hours = 0</td></tr>
+      <tr><td>Invoice display</td><td>Ex-tax amounts</td></tr>
+      <tr><td>Status — Progress (Co 1 &amp; 8)</td><td>Attendance complete (grey)</td></tr>
+      <tr><td>Status — Progress (Co 10 AE Evac)</td><td>Audit booked but not yet complete</td></tr>
+      <tr><td>Status — Scheduled</td><td>Job has a scheduled date set (green)</td></tr>
+      <tr><td>Status — Awaiting Client Info</td><td>Blue</td></tr>
+      <tr><td>Status — Tentative</td><td>Yellow</td></tr>
+      <tr><td>Timezone</td><td>All dates/times in AEST (UTC+10)</td></tr>
+      <tr><td>Cost centre count</td><td>38 AFSS cost centres mapped by ID</td></tr>
+      <tr><td>Internal clients (Invested Time)</td><td>Redmen Fire, Z SAFE OS, Adair Operation, AFAC (case-insensitive match)</td></tr>
+      <tr><td>Team member IDs</td><td>Soban: 1581 | Ryan: 15 | Josh: 1753 | CFSP tech: 1126</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<div class="page-footer">AFSS Backlog Tracker — System Overview — Red Adair — Confidential — June 2026</div>
+</body>
+</html>

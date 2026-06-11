@@ -57,6 +57,11 @@ function jobPrice(job: RawJob): number {
   return p > 0 ? p : 330;
 }
 
+// CHUBB/AFAC (Company 8): no $330 default — use actual price or $0
+function jobPriceAfac(job: RawJob): number {
+  return Number((job.Total as Record<string, unknown>)?.ExTax ?? 0);
+}
+
 function jobHours(job: RawJob): number {
   const totals   = job.Totals as Record<string, unknown> | undefined;
   const resCost  = totals?.ResourcesCost as Record<string, unknown> | undefined;
@@ -96,9 +101,9 @@ function hrsForJob(job: RawJob): number {
 
 interface Stats { count: number; hrs: number; amt: number }
 
-function agg(jobs: RawJob[], getHrs: (j: RawJob) => number = jobHours): Stats {
+function agg(jobs: RawJob[], getHrs: (j: RawJob) => number = jobHours, getAmt: (j: RawJob) => number = jobPrice): Stats {
   return jobs.reduce<Stats>(
-    (a, j) => ({ count: a.count + 1, hrs: a.hrs + getHrs(j), amt: a.amt + jobPrice(j) }),
+    (a, j) => ({ count: a.count + 1, hrs: a.hrs + getHrs(j), amt: a.amt + getAmt(j) }),
     { count: 0, hrs: 0, amt: 0 }
   );
 }
@@ -400,7 +405,6 @@ export default function Dashboard2Page() {
   function loadTechSupport(force = false, mf = monthFilter) {
     const p = new URLSearchParams();
     if (force) p.set("force", "1");
-    p.set("excludeDatacom", "1");
     if (mf === "all") {
       p.set("all", "1");
     } else {
@@ -429,7 +433,7 @@ export default function Dashboard2Page() {
 
     // Kick off a fresh SimPRO rebuild immediately on load so the next poll
     // always gets the latest data (not a potentially stale cache).
-    fetch("/api/tech-support?excludeDatacom=1&all=1&force=1").catch(() => {});
+    fetch("/api/tech-support?all=1&force=1").catch(() => {});
 
     // Re-fetch shared data when this tab becomes visible so changes made in
     // the other dashboard are reflected immediately without a manual refresh.
@@ -438,7 +442,7 @@ export default function Dashboard2Page() {
         loadIntercompany(); // eslint-disable-line react-hooks/exhaustive-deps
         loadAfacExclusions(); // eslint-disable-line react-hooks/exhaustive-deps
         loadAfacProspect(); // eslint-disable-line react-hooks/exhaustive-deps
-        fetch("/api/tech-support?excludeDatacom=1&all=1&force=1").catch(() => {});
+        fetch("/api/tech-support?all=1&force=1").catch(() => {});
       }
     }
     document.addEventListener("visibilitychange", onVisible);
@@ -660,7 +664,7 @@ export default function Dashboard2Page() {
                     Total Backlog as at end of period
                   </td>
                   <StatCells s={(() => { const icSum = (parseFloat(icRmHrs)||0)+(parseFloat(icAeHrs)||0)+(parseFloat(icFiaHrs)||0); const b = agg(visibleAll.filter(isInAnyRow), hrsForJob); return { ...b, hrs: b.hrs + (afacProspect?.hours ?? 0) + (obData?.hours ?? 0) + (itData?.hours ?? 0) + (qaData?.hours ?? 0) + icSum, amt: b.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) + (icSum * 100) }; })()} bold />
-                  {COMPANIES.map(co => <StatCells key={co.id} s={agg(visibleCo(co.id).filter(isInAnyRow), hrsForJob)} bold />)}
+                  {COMPANIES.map(co => <StatCells key={co.id} s={agg(visibleCo(co.id).filter(isInAnyRow), co.id === 8 ? jobHours : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice)} bold />)}
                 </tr>
 
                 {/* All Companies label */}
@@ -695,7 +699,7 @@ export default function Dashboard2Page() {
                         <StatCells s={row.key === "complete" ? { ...agg(all, getHrs), hrs: 0 } : agg(all, getHrs)} />
                         {COMPANIES.map(co => {
                           const jobs = visibleCo(co.id).filter(rowFilter);
-                          const s = agg(jobs, getHrs);
+                          const s = agg(jobs, co.id === 8 ? jobHours : getHrs, co.id === 8 ? jobPriceAfac : jobPrice);
                           return <StatCells key={co.id} s={row.key === "complete" ? { ...s, hrs: 0 } : s} />;
                         })}
                       </tr>
@@ -1049,7 +1053,7 @@ export default function Dashboard2Page() {
               const supplyTech   = allMembers.filter(m => !m.role.includes("Primary APFS"))
                 .reduce((s, m) => s + m.monthlyHours, 0);
               const demandAudit  = [1, 8, 10].reduce((sum, coId) =>
-                sum + visibleCo(coId).filter(isInAnyRow).reduce((s, j) => s + hrsForJob(j), 0), 0
+                sum + visibleCo(coId).filter(isInAnyRow).reduce((s, j) => s + (coId === 8 ? jobHours(j) : hrsForJob(j)), 0), 0
               ) + (afacProspect?.hours ?? 0);
               const icSum        = (parseFloat(icRmHrs)||0) + (parseFloat(icAeHrs)||0) + (parseFloat(icFiaHrs)||0);
               const demandTech   = (obData?.hours ?? 0) + (itData?.hours ?? 0) + (qaData?.hours ?? 0) + icSum;

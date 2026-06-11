@@ -48,6 +48,11 @@ function jobPrice(job: RawJob): number {
   return p > 0 ? p : 330;
 }
 
+// CHUBB/AFAC (Company 8): no $330 default — use actual price or $0
+function jobPriceAfac(job: RawJob): number {
+  return Number((job.Total as Record<string, unknown>)?.ExTax ?? 0);
+}
+
 function jobHours(job: RawJob): number {
   const totals   = job.Totals as Record<string, unknown> | undefined;
   const resCost  = totals?.ResourcesCost as Record<string, unknown> | undefined;
@@ -87,9 +92,9 @@ function hrsForJob(job: RawJob): number {
 
 interface Stats { count: number; hrs: number; amt: number }
 
-function agg(jobs: RawJob[], getHrs: (j: RawJob) => number = jobHours): Stats {
+function agg(jobs: RawJob[], getHrs: (j: RawJob) => number = jobHours, getAmt: (j: RawJob) => number = jobPrice): Stats {
   return jobs.reduce<Stats>(
-    (a, j) => ({ count: a.count + 1, hrs: a.hrs + getHrs(j), amt: a.amt + jobPrice(j) }),
+    (a, j) => ({ count: a.count + 1, hrs: a.hrs + getHrs(j), amt: a.amt + getAmt(j) }),
     { count: 0, hrs: 0, amt: 0 }
   );
 }
@@ -650,7 +655,7 @@ export default function DashboardPage() {
                     Total Backlog as at end of period
                   </td>
                   <StatCells s={(() => { const icSum = (parseFloat(icRmHrs)||0)+(parseFloat(icAeHrs)||0)+(parseFloat(icFiaHrs)||0); const b = agg(visibleAll.filter(isInAnyRow), hrsForJob); return { ...b, hrs: b.hrs + (afacProspect?.hours ?? 0) + (obData?.hours ?? 0) + (itData?.hours ?? 0) + (qaData?.hours ?? 0) + icSum, amt: b.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) + (icSum * 100) }; })()} bold />
-                  {COMPANIES.map(co => <StatCells key={co.id} s={agg(visibleCo(co.id).filter(isInAnyRow), hrsForJob)} bold />)}
+                  {COMPANIES.map(co => <StatCells key={co.id} s={agg(visibleCo(co.id).filter(isInAnyRow), co.id === 8 ? jobHours : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice)} bold />)}
                 </tr>
 
                 {/* All Companies label */}
@@ -685,7 +690,7 @@ export default function DashboardPage() {
                         <StatCells s={row.key === "complete" ? { ...agg(all, getHrs), hrs: 0 } : agg(all, getHrs)} />
                         {COMPANIES.map(co => {
                           const jobs = visibleCo(co.id).filter(rowFilter);
-                          const s = agg(jobs, getHrs);
+                          const s = agg(jobs, co.id === 8 ? jobHours : getHrs, co.id === 8 ? jobPriceAfac : jobPrice);
                           return <StatCells key={co.id} s={row.key === "complete" ? { ...s, hrs: 0 } : s} />;
                         })}
                       </tr>
@@ -1039,7 +1044,7 @@ export default function DashboardPage() {
               const supplyTech   = allMembers.filter(m => !m.role.includes("Primary APFS"))
                 .reduce((s, m) => s + m.monthlyHours, 0);
               const demandAudit  = [1, 8, 10].reduce((sum, coId) =>
-                sum + visibleCo(coId).filter(isInAnyRow).reduce((s, j) => s + hrsForJob(j), 0), 0
+                sum + visibleCo(coId).filter(isInAnyRow).reduce((s, j) => s + (coId === 8 ? jobHours(j) : hrsForJob(j)), 0), 0
               ) + (afacProspect?.hours ?? 0);
               const icSum        = (parseFloat(icRmHrs)||0) + (parseFloat(icAeHrs)||0) + (parseFloat(icFiaHrs)||0);
               const demandTech   = (obData?.hours ?? 0) + (itData?.hours ?? 0) + (qaData?.hours ?? 0) + icSum;

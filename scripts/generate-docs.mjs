@@ -19,8 +19,7 @@ const html = `<!DOCTYPE html>
   .toc ol { padding-left: 18px; }
   .toc li { padding: 3px 0; font-size: 10.5pt; color: #1e3a5f; }
   .toc li.sub { padding-left: 16px; font-size: 9.5pt; color: #475569; list-style-type: lower-alpha; }
-  section { padding: 16px 24px 10px; page-break-before: always; }
-  section:first-of-type { page-break-before: avoid; }
+  section { padding: 16px 24px 10px; }
   h2.section-title { font-size: 15pt; font-weight: 800; color: #fff; background: #1e3a5f; padding: 8px 14px; border-radius: 4px; margin-bottom: 12px; }
   h3 { font-size: 11.5pt; font-weight: 700; color: #1e3a5f; margin: 14px 0 7px; border-left: 4px solid #2563eb; padding-left: 8px; }
   h4 { font-size: 10.5pt; font-weight: 700; color: #334155; margin: 10px 0 4px; }
