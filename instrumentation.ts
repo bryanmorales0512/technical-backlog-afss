@@ -1,9 +1,9 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs" && process.env.NODE_ENV !== "development") {
     const { warmAll } = await import("./app/lib/simpro");
-    const { warmLeave } = await import("./app/api/leave/route");
-    const { warmTechSupport } = await import("./app/api/tech-support/route");
-    const { warmAfacProspect } = await import("./app/api/afac-prospect/route");
+    const { warmLeave } = await import("./app/api/leave/core");
+    const { warmTechSupport } = await import("./app/api/tech-support/core");
+    const { warmAfacProspect } = await import("./app/api/afac-prospect/core");
 
     // warmAll() runs FIRST (sequentially) — it exhausts SimPRO's rate limit for 5-8 min.
     // Running tech-support/leave/afac-prospect in parallel with warmAll() causes 429 errors

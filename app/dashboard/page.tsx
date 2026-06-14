@@ -65,21 +65,9 @@ function scheduledHrs(job: RawJob): number {
   return Number(job._scheduledHours ?? 0);
 }
 
-// Returns true if the job has another "A ..." plan-type technician alongside A CFSP ONLY
-function hasMixedPlanType(job: RawJob): boolean {
-  const techs = job.Technicians as Record<string, unknown>[] | undefined;
-  if (!techs) return false;
-  return techs.some((t) => {
-    const name = String((t as Record<string, unknown>).Name ?? "").replace(/\s+/g, " ").trim().toUpperCase();
-    return /^A [A-Z]/.test(name) && name !== "A CFSP ONLY";
-  });
-}
-
-// Mirrors the rowFilter logic — only true if the job appears in one of the status rows.
+// Only true if the job appears in a visible status row (excludes complete).
 function isInAnyRow(job: RawJob): boolean {
-  const key = statusKey(job);
-  if (key !== "complete") return true;
-  return !hasMixedPlanType(job);
+  return statusKey(job) !== "complete";
 }
 
 function hrsForJob(job: RawJob): number {
@@ -654,8 +642,8 @@ export default function DashboardPage() {
                   >
                     Total Backlog as at end of period
                   </td>
-                  <StatCells s={(() => { const icSum = (parseFloat(icRmHrs)||0)+(parseFloat(icAeHrs)||0)+(parseFloat(icFiaHrs)||0); const b = agg(visibleAll.filter(isInAnyRow), hrsForJob); return { ...b, hrs: b.hrs + (afacProspect?.hours ?? 0) + (obData?.hours ?? 0) + (itData?.hours ?? 0) + (qaData?.hours ?? 0) + icSum, amt: b.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) + (icSum * 100) }; })()} bold />
-                  {COMPANIES.map(co => <StatCells key={co.id} s={agg(visibleCo(co.id).filter(isInAnyRow), co.id === 8 ? jobHours : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice)} bold />)}
+                  <StatCells s={(() => { const icSum = (parseFloat(icRmHrs)||0)+(parseFloat(icAeHrs)||0)+(parseFloat(icFiaHrs)||0); const b = COMPANIES.reduce((acc, co) => { const s = agg(visibleCo(co.id).filter(isInAnyRow), hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice); return { count: acc.count + s.count, hrs: acc.hrs + s.hrs, amt: acc.amt + s.amt }; }, { count: 0, hrs: 0, amt: 0 }); return { ...b, count: b.count + (obData?.jobs ?? 0) + (itData?.jobs ?? 0) + (qaData?.jobs ?? 0) + (afacProspect?.jobs ?? 0), hrs: b.hrs + (afacProspect?.hours ?? 0) + (obData?.hours ?? 0) + (itData?.hours ?? 0) + (qaData?.hours ?? 0) + icSum, amt: b.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) + (icSum * 100) }; })()} bold />
+                  {COMPANIES.map(co => <StatCells key={co.id} s={agg(visibleCo(co.id).filter(isInAnyRow), hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice)} bold />)}
                 </tr>
 
                 {/* All Companies label */}
@@ -674,10 +662,9 @@ export default function DashboardPage() {
                   const getHrs = row.key === "scheduled"
                     ? (j: RawJob) => { const sh = scheduledHrs(j); return sh > 0 ? sh : jobHours(j); }
                     : jobHours;
-                  const rowFilter = (j: RawJob) =>
-                    statusKey(j) === row.key &&
-                    (row.key !== "complete" || !hasMixedPlanType(j));
+                  const rowFilter = (j: RawJob) => statusKey(j) === row.key;
                   const all = visibleAll.filter(rowFilter);
+                  const zero = { count: 0, hrs: 0, amt: 0 };
                   return (
                     <React.Fragment key={row.key}>
                       <tr>
@@ -687,11 +674,11 @@ export default function DashboardPage() {
                         >
                           {row.label}
                         </td>
-                        <StatCells s={row.key === "complete" ? { ...agg(all, getHrs), hrs: 0 } : agg(all, getHrs)} />
+                        <StatCells s={row.key === "complete" ? zero : agg(all, getHrs)} />
                         {COMPANIES.map(co => {
                           const jobs = visibleCo(co.id).filter(rowFilter);
-                          const s = agg(jobs, co.id === 8 ? jobHours : getHrs, co.id === 8 ? jobPriceAfac : jobPrice);
-                          return <StatCells key={co.id} s={row.key === "complete" ? { ...s, hrs: 0 } : s} />;
+                          const s = agg(jobs, getHrs, co.id === 8 ? jobPriceAfac : jobPrice);
+                          return <StatCells key={co.id} s={row.key === "complete" ? zero : s} />;
                         })}
                       </tr>
                     </React.Fragment>

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { warmAll } from "../../lib/simpro";
-import { warmLeave } from "../leave/route";
-import { warmTechSupport } from "../tech-support/route";
-import { warmAfacProspect } from "../afac-prospect/route";
+import { warmLeave } from "../leave/core";
+import { warmTechSupport } from "../tech-support/core";
+import { warmAfacProspect } from "../afac-prospect/core";
 
 export const maxDuration = 300;
 

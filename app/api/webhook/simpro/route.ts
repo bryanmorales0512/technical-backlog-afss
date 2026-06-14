@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import { join } from "path";
 import os from "os";
-import { warmTechSupport } from "../../tech-support/route";
+import { warmTechSupport } from "../../tech-support/core";
 
 // SimPRO webhook endpoint — receives schedule change notifications,
 // clears the tech-support cache, then immediately kicks off a background
