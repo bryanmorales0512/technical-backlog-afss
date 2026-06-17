@@ -51,7 +51,7 @@ export async function GET(req: Request) {
     }, { headers: { "Cache-Control": "no-store" } });
   }
 
-  if (url.searchParams.get("debug") === "list") {
+  if (url.searchParams.get("debug") === "list" || url.searchParams.get("debug") === "pipeline") {
     scheduleCcIdRefresh();
     const tentativeIds = await getTentativeStaffIds();
     const afssIds = _dynamicAfssIds;
@@ -67,19 +67,42 @@ export async function GET(req: Request) {
     const jobCcNames = ccCache;
     const ob: object[] = [];
     const it: object[] = [];
+    // Dropped tracking for pipeline debug
+    const droppedNotAfss:  object[] = [];
+    const droppedNoJob:    object[] = [];
+    const droppedBadStage: object[] = [];
     for (const b of blockList) {
-      if (!isAfssBlock(b, jobCcNames, afssIds)) continue;
-      const job = jobMap.get(b.jobId);
-      if (!job) continue;
-      const stage = String(job.Stage ?? "").toLowerCase();
-      if (stage !== "pending" && stage !== "progress") continue;
-      const customer = String((job.Customer as Record<string, unknown>)?.CompanyName ?? "");
       const resolvedName = b.ccName || (b.ccId > 0 && jobCcNames.has(b.ccId) ? jobCcNames.get(b.ccId)! : "");
+      if (!isAfssBlock(b, jobCcNames, afssIds)) {
+        droppedNotAfss.push({ jobId: b.jobId, date: b.date, staffId: b.staffId, hours: b.hours, ccName: resolvedName, ccId: b.ccId });
+        continue;
+      }
+      const job = jobMap.get(b.jobId);
+      if (!job) {
+        droppedNoJob.push({ jobId: b.jobId, date: b.date, staffId: b.staffId, hours: b.hours, ccName: resolvedName, ccId: b.ccId });
+        continue;
+      }
+      const stage = String(job.Stage ?? "").toLowerCase();
+      if (stage !== "pending" && stage !== "progress") {
+        droppedBadStage.push({ jobId: b.jobId, date: b.date, staffId: b.staffId, hours: b.hours, ccName: resolvedName, ccId: b.ccId, stage });
+        continue;
+      }
+      const customer = String((job.Customer as Record<string, unknown>)?.CompanyName ?? "");
       const row = { jobId: b.jobId, date: b.date, staffId: b.staffId, hours: b.hours, ccName: resolvedName, ccId: b.ccId, customer, stage };
       const isInternal = ["REDMEN FIRE", "AFAC", "ADAIR OPERATION", "Z SAFE"].some(c => customer.toUpperCase().includes(c));
       if (isInternal) it.push(row); else ob.push(row);
     }
-    return NextResponse.json({ obCount: ob.length, itCount: it.length, total: ob.length + it.length, ob, it }, { headers: { "Cache-Control": "no-store" } });
+    const result: Record<string, unknown> = { obCount: ob.length, itCount: it.length, total: ob.length + it.length, ob, it };
+    if (url.searchParams.get("debug") === "pipeline") {
+      result.totalBlocksFetched = blockList.length;
+      result.droppedNotAfss  = droppedNotAfss;
+      result.droppedNoJob    = droppedNoJob;
+      result.droppedBadStage = droppedBadStage;
+      result.droppedNotAfssCount  = droppedNotAfss.length;
+      result.droppedNoJobCount    = droppedNoJob.length;
+      result.droppedBadStageCount = droppedBadStage.length;
+    }
+    return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
   }
 
   const nodc       = url.searchParams.get("excludeDatacom") === "1";

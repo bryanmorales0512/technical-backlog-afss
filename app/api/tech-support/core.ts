@@ -94,7 +94,7 @@ export function scheduleCcIdRefresh(): void {
 
 export function obItCacheFile(year: number, month: number, nodc = false) {
   const tag = nodc ? "-nodc" : "";
-  return join(CACHE_DIR, `afss-tech-support-v105${tag}-${year}-${String(month).padStart(2, "0")}.json`);
+  return join(CACHE_DIR, `afss-tech-support-v108${tag}-${year}-${String(month).padStart(2, "0")}.json`);
 }
 export async function readObItCache(year: number, month: number, nodc = false): Promise<{ data: { otherBillable: TechSupportStats; investedTime: TechSupportStats }; ts: number } | null> {
   try { return JSON.parse(await fs.readFile(obItCacheFile(year, month, nodc), "utf-8")); } catch { return null; }
@@ -103,7 +103,7 @@ export async function writeObItCache(year: number, month: number, data: { otherB
   const tag = nodc ? "-nodc" : "";
   const json = JSON.stringify({ data, ts: Date.now() });
   fs.writeFile(obItCacheFile(year, month, nodc), json, "utf-8").catch(() => {});
-  gcsWrite(`afss-tech-support-v105${tag}-${year}-${String(month).padStart(2, "0")}.json`, json);
+  gcsWrite(`afss-tech-support-v108${tag}-${year}-${String(month).padStart(2, "0")}.json`, json);
 }
 
 export function qaCacheFile() { return join(CACHE_DIR, "afss-qa-v1.json"); }
@@ -176,6 +176,24 @@ export function getFullMonthWeekdays(year: number, month: number): string[] {
     const dt = new Date(year, month - 1, d);
     if (dt.getDay() !== 0 && dt.getDay() !== 6)
       days.push(`${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  }
+  return days;
+}
+
+// For the current month, returns all remaining days from today (including weekends).
+// For past or future months, returns all days in that month.
+// Includes weekends because SimPro schedules can fall on any day of the week.
+export function getMonthWeekdays(year: number, month: number): string[] {
+  const aest = new Date(Date.now() + 10 * 60 * 60 * 1000);
+  const todayYear  = aest.getUTCFullYear();
+  const todayMonth = aest.getUTCMonth() + 1;
+  const todayDay   = aest.getUTCDate();
+  const isCurrentMonth = year === todayYear && month === todayMonth;
+  const startDay = isCurrentMonth ? todayDay : 1;
+  const lastDay = new Date(year, month, 0).getDate();
+  const days: string[] = [];
+  for (let d = startDay; d <= lastDay; d++) {
+    days.push(`${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
   }
   return days;
 }
@@ -253,7 +271,7 @@ export function isAfssBlock(b: BlockInfo, ccCache?: Map<number, string>, afssIds
 
 export async function fetchAllScheduleBlocks(year: number, month: number, tentativeIds: Set<number>): Promise<BlockInfo[]> {
   const allIds = new Set([...TEAM_IDS, ...tentativeIds]);
-  const days = getFullMonthWeekdays(year, month);
+  const days = getMonthWeekdays(year, month);
   const blockList: BlockInfo[] = [];
   const BATCH = 3;
   for (let i = 0; i < days.length; i += BATCH) {
@@ -273,7 +291,7 @@ export async function fetchAllScheduleBlocks(year: number, month: number, tentat
         const sectionId = Number(proj?.SectionID    ?? 0);
         const ccTop     = block?.CostCenter as Record<string, unknown> | undefined;
         const ccProj    = proj?.CostCenter  as Record<string, unknown> | undefined;
-        const ccName    = String(ccTop?.Name ?? ccProj?.Name ?? "");
+        const ccName    = String(ccTop?.Name ?? ccProj?.Name ?? "").trim();
         blockList.push({ staffId, date: day, hours, jobId: String(proj.ProjectID), ccId, ccName, sectionId });
       }
     }
@@ -365,7 +383,13 @@ export function calcOtherBillable(blockList: BlockInfo[], jobMap: Map<string, Re
     if (!isAfssBlock(b, ccCache, afssIds)) continue;
     if (excludeDatacom && isDatacomBlock(b, ccCache)) continue;
     const job = jobMap.get(b.jobId);
-    if (!job) continue;
+    // If job details failed to load, include as OB (external, pending assumption)
+    if (!job) {
+      stat.jobs++;
+      stat.hours  = Math.round((stat.hours  + b.hours)        * 100) / 100;
+      stat.amount = Math.round((stat.amount + b.hours * RATE)  * 100) / 100;
+      continue;
+    }
     const stage = String(job.Stage ?? "").toLowerCase();
     if (stage !== "pending" && stage !== "progress") continue;
     if (isInternalClient(job)) continue;
@@ -378,19 +402,17 @@ export function calcOtherBillable(blockList: BlockInfo[], jobMap: Map<string, Re
 
 export function calcInvestedTime(blockList: BlockInfo[], jobMap: Map<string, Record<string, unknown>>, ccCache: Map<number, string>, excludeDatacom = false, afssIds: Set<number> = KNOWN_AFSS_CC_IDS): TechSupportStats {
   const stat: TechSupportStats = { jobs: 0, hours: 0, amount: 0 };
-  const seen = new Set<string>();
   for (const b of blockList) {
     if (!isAfssBlock(b, ccCache, afssIds)) continue;
     if (excludeDatacom && isDatacomBlock(b, ccCache)) continue;
     const job = jobMap.get(b.jobId);
-    if (!job) continue;
+    if (!job) continue; // if unknown, OB already claimed it above
     const stage = String(job.Stage ?? "").toLowerCase();
     if (stage !== "pending" && stage !== "progress") continue;
     if (!isInternalClient(job)) continue;
-    const key = `${b.staffId}-${b.date}-${b.jobId}`;
+    stat.jobs++;
     stat.hours  = Math.round((stat.hours  + b.hours)        * 100) / 100;
     stat.amount = Math.round((stat.amount + b.hours * RATE)  * 100) / 100;
-    if (!seen.has(key)) { seen.add(key); stat.jobs++; }
   }
   return stat;
 }

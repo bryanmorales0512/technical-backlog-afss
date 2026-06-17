@@ -429,9 +429,9 @@ export default function DashboardPage() {
     loadIntercompany(); // eslint-disable-line react-hooks/exhaustive-deps
     loadAfacExclusions(); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Kick off a fresh SimPRO rebuild immediately on load so the next poll
-    // always gets the latest data (not a potentially stale cache).
-    fetch("/api/tech-support?all=1&force=1").catch(() => {});
+    // Kick off a fresh SimPRO rebuild immediately on load and pipe the result
+    // straight into state so the UI updates as soon as the rebuild finishes.
+    loadTechSupport(true); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Re-fetch shared data when this tab becomes visible so changes made in
     // the other dashboard are reflected immediately without a manual refresh.
@@ -440,7 +440,7 @@ export default function DashboardPage() {
         loadIntercompany(); // eslint-disable-line react-hooks/exhaustive-deps
         loadAfacExclusions(); // eslint-disable-line react-hooks/exhaustive-deps
         loadAfacProspect(); // eslint-disable-line react-hooks/exhaustive-deps
-        fetch("/api/tech-support?all=1&force=1").catch(() => {});
+        loadTechSupport(true); // eslint-disable-line react-hooks/exhaustive-deps
       }
     }
     document.addEventListener("visibilitychange", onVisible);
@@ -564,6 +564,8 @@ export default function DashboardPage() {
     if (monthFilter === "all") return member.monthlyHours;
     const [fy, fm] = monthFilter.split("-").map(Number);
     if (fy === now.getFullYear() && fm === now.getMonth() + 1) return member.monthlyHours;
+    const isFuture = fy > now.getFullYear() || (fy === now.getFullYear() && fm > now.getMonth() + 1);
+    if (isFuture) return member.monthlyHours + totalWorkingDaysInMonth(fy, fm) - publicHolidays.length * 8;
     return totalWorkingDaysInMonth(fy, fm) - publicHolidays.length * 8;
   };
 
