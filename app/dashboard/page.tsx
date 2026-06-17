@@ -91,6 +91,15 @@ function fmtAmt(n: number) {
   return `$ ${n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function totalWorkingDaysInMonth(year: number, month: number): number {
+  const lastDay = new Date(year, month, 0);
+  let hours = 0;
+  for (let d = new Date(year, month - 1, 1); d <= lastDay; d.setDate(d.getDate() + 1)) {
+    if (d.getDay() !== 0 && d.getDay() !== 6) hours += 8;
+  }
+  return hours;
+}
+
 function leaveInMonth(member: TeamMember, now: Date): LeaveEntry[] {
   const y = now.getFullYear();
   const m = now.getMonth();
@@ -537,6 +546,16 @@ export default function DashboardPage() {
     }),
   ];
 
+  const supplyMonthDate = monthFilter === "all"
+    ? now
+    : (() => { const [fy, fm] = monthFilter.split("-").map(Number); return new Date(fy, fm - 1, 1); })();
+  const getMonthHours = (member: TeamMember): number => {
+    if (monthFilter === "all") return member.monthlyHours;
+    const [fy, fm] = monthFilter.split("-").map(Number);
+    if (fy === now.getFullYear() && fm === now.getMonth() + 1) return member.monthlyHours;
+    return totalWorkingDaysInMonth(fy, fm);
+  };
+
   const TH = ({ children }: { children: React.ReactNode }) => (
     <th className="border border-gray-400 px-2 py-3 text-center text-xs font-semibold bg-blue-500 text-white">
       {children}
@@ -721,21 +740,21 @@ export default function DashboardPage() {
                 </tr>
                 <tr>
                   <td colSpan={3} className="border border-gray-400 px-3 py-2 text-center font-bold text-base" style={{ backgroundColor: "#a855f7", color: "#fff" }}>
-                    {now.toLocaleString("en-AU", { month: "long" })}
+                    {supplyMonthDate.toLocaleString("en-AU", { month: "long" })}
                   </td>
                 </tr>
                 <tr>
                   <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe" }}>APFS / AUDITOR</th>
-                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe", width: 70 }}>{now.toLocaleString("en-AU", { month: "short" })}</th>
+                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe", width: 70 }}>{supplyMonthDate.toLocaleString("en-AU", { month: "short" })}</th>
                   <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe", width: 100 }}>Total Supply Hours</th>
                   <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe", width: 190 }}>Roles</th>
                 </tr>
               </thead>
               <tbody>
                 {team.filter(m => !hiddenCoreIds.has(m.id)).map(member => {
-                  const leaveDays  = remainingLeaveDays(member, now);
+                  const leaveDays  = remainingLeaveDays(member, supplyMonthDate);
                   const leaveHrs   = leaveDays * 8;
-                  const netHrs     = Math.max(0, member.monthlyHours - leaveHrs);
+                  const netHrs     = Math.max(0, getMonthHours(member) - leaveHrs);
                   const onLeaveNow = isOnLeaveToday(member, now);
                   return (
                     <tr key={member.id}>
@@ -751,7 +770,7 @@ export default function DashboardPage() {
                         </span>
                       </td>
                       <td className="border border-gray-400 px-2 py-2 text-center text-sm">{netHrs}</td>
-                      <td className="border border-gray-400 px-2 py-2 text-center text-sm">{member.monthlyHours}</td>
+                      <td className="border border-gray-400 px-2 py-2 text-center text-sm">{getMonthHours(member)}</td>
                       <td className="border border-gray-400 px-2 py-2 text-center text-xs">{member.role}</td>
                     </tr>
                   );
@@ -759,8 +778,8 @@ export default function DashboardPage() {
 
                 {/* Extra (manager-added) team members */}
                 {extraTeam.map(member => {
-                  const leaveDays  = remainingLeaveDays(member, now);
-                  const netHrs     = Math.max(0, member.monthlyHours - leaveDays * 8);
+                  const leaveDays  = remainingLeaveDays(member, supplyMonthDate);
+                  const netHrs     = Math.max(0, getMonthHours(member) - leaveDays * 8);
                   const onLeaveNow = isOnLeaveToday(member, now);
                   return (
                     <tr key={member.id} style={{ backgroundColor: "#f0fdf4" }}>
@@ -776,7 +795,7 @@ export default function DashboardPage() {
                         </span>
                       </td>
                       <td className="border border-gray-400 px-2 py-2 text-center text-sm">{netHrs}</td>
-                      <td className="border border-gray-400 px-2 py-2 text-center text-sm">{member.monthlyHours}</td>
+                      <td className="border border-gray-400 px-2 py-2 text-center text-sm">{getMonthHours(member)}</td>
                       <td className="border border-gray-400 px-2 py-2 text-center text-xs">{member.role}</td>
                     </tr>
                   );
@@ -801,10 +820,10 @@ export default function DashboardPage() {
                 <tr className="font-bold">
                   <td className="border border-gray-400 px-3 py-2" style={{ backgroundColor: "#ede9fe" }} />
                   <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#ede9fe" }}>
-                    {[...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + Math.max(0, m.monthlyHours - remainingLeaveDays(m, now) * 8), 0) - publicHolidays.length * 8}
+                    {[...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + Math.max(0, getMonthHours(m) - remainingLeaveDays(m, supplyMonthDate) * 8), 0) - publicHolidays.length * 8}
                   </td>
                   <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#ede9fe" }}>
-                    {[...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + m.monthlyHours, 0) - publicHolidays.length * 8}
+                    {[...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + getMonthHours(m), 0) - publicHolidays.length * 8}
                   </td>
                   <td className="border border-gray-400 px-2 py-2" style={{ backgroundColor: "#ede9fe" }} />
                 </tr>
@@ -896,11 +915,11 @@ export default function DashboardPage() {
                 )}
               </tbody>
             </table>
-            {team.some(m => leaveInMonth(m, now).length > 0) && (
+            {team.some(m => leaveInMonth(m, supplyMonthDate).length > 0) && (
               <div className="mt-2 text-xs text-gray-600">
                 <span className="font-semibold">*Note: </span>
                 {team.flatMap(m =>
-                  leaveInMonth(m, now).map(l => {
+                  leaveInMonth(m, supplyMonthDate).map(l => {
                     const fmt = (d: string) => new Date(d).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
                     const range = l.from === l.to ? fmt(l.from) : `${fmt(l.from)} to ${fmt(l.to)}`;
                     return `${m.name.split(" ")[0]} on Leave ${range}`;
@@ -1040,9 +1059,9 @@ export default function DashboardPage() {
             {(() => {
               const allMembers   = [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam];
               const supplyAudit  = allMembers.filter(m => m.role.includes("Primary APFS"))
-                .reduce((s, m) => s + m.monthlyHours, 0);
+                .reduce((s, m) => s + getMonthHours(m), 0);
               const supplyTech   = allMembers.filter(m => !m.role.includes("Primary APFS"))
-                .reduce((s, m) => s + m.monthlyHours, 0);
+                .reduce((s, m) => s + getMonthHours(m), 0);
               const demandAudit  = [1, 8, 10].reduce((sum, coId) =>
                 sum + visibleCo(coId).filter(isInAnyRow).reduce((s, j) => s + (coId === 8 ? jobHours(j) : hrsForJob(j)), 0), 0
               ) + (afacProspect?.hours ?? 0);
