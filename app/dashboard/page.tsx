@@ -286,6 +286,16 @@ export default function DashboardPage() {
     }).catch(() => {});
   }
 
+  function loadFilterPublicHolidays(mf = monthFilter) {
+    const [fy, fm] = mf === "all"
+      ? [now.getFullYear(), now.getMonth() + 1]
+      : mf.split("-").map(Number);
+    fetch(`/api/public-holidays?year=${fy}&month=${fm}`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setPublicHolidays(d); })
+      .catch(() => {});
+  }
+
   function loadExtraTeam() {
     fetch("/api/extra-team").then(r => r.json()).then(setExtraTeam).catch(() => {});
   }
@@ -475,6 +485,7 @@ export default function DashboardPage() {
     setItData(null);
     setQaData(null);
     loadTechSupport(false, monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
+    loadFilterPublicHolidays(monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
   }, [monthFilter]);
 
   // Cold-start recovery: if tech-support data is still null 15 s after mount
@@ -553,7 +564,7 @@ export default function DashboardPage() {
     if (monthFilter === "all") return member.monthlyHours;
     const [fy, fm] = monthFilter.split("-").map(Number);
     if (fy === now.getFullYear() && fm === now.getMonth() + 1) return member.monthlyHours;
-    return totalWorkingDaysInMonth(fy, fm);
+    return totalWorkingDaysInMonth(fy, fm) - publicHolidays.length * 8;
   };
 
   const TH = ({ children }: { children: React.ReactNode }) => (
@@ -597,7 +608,7 @@ export default function DashboardPage() {
           ))}
         </select>
         <button
-          onClick={() => { load(true); loadLeave(true); loadTechSupport(true); loadAfacProspect(true); }}
+          onClick={() => { load(true); loadLeave(true); loadTechSupport(true); loadAfacProspect(true); loadFilterPublicHolidays(); }}
           disabled={techRefreshing}
           className="shrink-0 px-3 py-1 rounded bg-neutral-100 hover:bg-neutral-200 text-xs disabled:opacity-50"
         >
