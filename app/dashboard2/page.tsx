@@ -525,13 +525,26 @@ export default function Dashboard2Page() {
   const visibleAll  = filterJobs(allJobs);
   const visibleCo   = (id: number) => filterJobs(coJobs(id)).filter(j => !isDatacomJob(j));
 
-  // Dropdown options: "All" + current month + next 2 months
-  const monthOptions = [{ value: "all", label: "All" }];
-  for (let i = 0; i < 3; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    monthOptions.push({ value: val, label: d.toLocaleString("en-AU", { month: "long", year: "numeric" }) });
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const monthSet = new Set<string>();
+  for (const j of allJobs) {
+    const date = (j._scheduledDate || j.DueDate) as string | null;
+    if (date) {
+      const d = new Date(date);
+      if (!isNaN(d.getTime())) {
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        if (key >= currentMonthKey) monthSet.add(key);
+      }
+    }
   }
+  const monthOptions = [
+    { value: "all", label: "All" },
+    ...[...monthSet].sort().slice(0, 3).map(val => {
+      const [y, m] = val.split("-").map(Number);
+      const d = new Date(y, m - 1, 1);
+      return { value: val, label: d.toLocaleString("en-AU", { month: "long", year: "numeric" }) };
+    }),
+  ];
 
   const TH = ({ children }: { children: React.ReactNode }) => (
     <th className="border border-gray-400 px-2 py-3 text-center text-xs font-semibold bg-blue-500 text-white">
@@ -1050,10 +1063,10 @@ export default function Dashboard2Page() {
               const excessDaysTech  = excessTech / 8;
               const supplyOverall   = supplyAudit + supplyTech;
               const demandOverall   = demandAudit + demandTech;
-              const varianceHours   = demandOverall - supplyOverall;
+              const varianceHours   = -(Math.abs(supplyOverall - demandOverall));
               const varianceDays    = varianceHours / 8;
               const varianceWeeks   = varianceDays / 5;
-              const fmtN = (n: number) => n >= 0 ? n.toFixed(2) : `(${Math.abs(n).toFixed(2)})`;
+              const fmtN = (n: number) => n >= 0 ? n.toFixed(2) : `-(${Math.abs(n).toFixed(2)})`;
               const fmtV = (n: number) => n.toFixed(2);
               const excessStyle = { backgroundColor: "#e9d5ff" };
               const supplyStyle = { backgroundColor: "#fef08a" };
@@ -1082,11 +1095,11 @@ export default function Dashboard2Page() {
                       </tr>
                       <tr>
                         <td className="border border-gray-400 px-3 py-2 text-sm font-semibold">Excess Demand Hours Audits</td>
-                        <td className="border border-gray-400 px-3 py-2 text-center font-bold text-sm">{fmtN(excessAudit)}</td>
+                        <td className="border border-gray-400 px-3 py-2 text-center font-bold text-sm">{Math.abs(excessAudit).toFixed(2)}</td>
                       </tr>
                       <tr>
                         <td className="border border-gray-400 px-3 py-2 text-sm font-semibold">Excess Demand Days Audits</td>
-                        <td className="border border-gray-400 px-3 py-2 text-center font-bold text-sm">{fmtN(excessDaysAudit)}</td>
+                        <td className="border border-gray-400 px-3 py-2 text-center font-bold text-sm">{Math.abs(excessDaysAudit).toFixed(2)}</td>
                       </tr>
                     </tbody>
                   </table>
