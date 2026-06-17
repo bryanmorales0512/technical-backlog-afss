@@ -15,6 +15,7 @@ export const QA_CACHE_TTL    = 60 * 60_000;
 
 const AFSS_CC_NAMES = new Set([
   "afe afex systems",
+  "afss works",
   "afe aspirating smoke det parts",
   "afe income",
   "afe speech intelligibility testing",
@@ -60,6 +61,7 @@ export const KNOWN_AFSS_CC_IDS = new Set<number>([
   367774, 366871, 367112, 367904,
   366878, 367111, 367813, 367825, 367828,
   342907,
+  365492, 367662, // AFSS WORKS
 ]);
 
 const KNOWN_DATACOM_CC_IDS = new Set<number>([366467]);
@@ -92,7 +94,7 @@ export function scheduleCcIdRefresh(): void {
 
 export function obItCacheFile(year: number, month: number, nodc = false) {
   const tag = nodc ? "-nodc" : "";
-  return join(CACHE_DIR, `afss-tech-support-v104${tag}-${year}-${String(month).padStart(2, "0")}.json`);
+  return join(CACHE_DIR, `afss-tech-support-v105${tag}-${year}-${String(month).padStart(2, "0")}.json`);
 }
 export async function readObItCache(year: number, month: number, nodc = false): Promise<{ data: { otherBillable: TechSupportStats; investedTime: TechSupportStats }; ts: number } | null> {
   try { return JSON.parse(await fs.readFile(obItCacheFile(year, month, nodc), "utf-8")); } catch { return null; }
@@ -101,7 +103,7 @@ export async function writeObItCache(year: number, month: number, data: { otherB
   const tag = nodc ? "-nodc" : "";
   const json = JSON.stringify({ data, ts: Date.now() });
   fs.writeFile(obItCacheFile(year, month, nodc), json, "utf-8").catch(() => {});
-  gcsWrite(`afss-tech-support-v104${tag}-${year}-${String(month).padStart(2, "0")}.json`, json);
+  gcsWrite(`afss-tech-support-v105${tag}-${year}-${String(month).padStart(2, "0")}.json`, json);
 }
 
 export function qaCacheFile() { return join(CACHE_DIR, "afss-qa-v1.json"); }
@@ -165,6 +167,17 @@ export async function fetchDayBlocks(date: string): Promise<Record<string, unkno
     page++;
   }
   return all;
+}
+
+export function getFullMonthWeekdays(year: number, month: number): string[] {
+  const days: string[] = [];
+  const lastDay = new Date(year, month, 0).getDate();
+  for (let d = 1; d <= lastDay; d++) {
+    const dt = new Date(year, month - 1, d);
+    if (dt.getDay() !== 0 && dt.getDay() !== 6)
+      days.push(`${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  }
+  return days;
 }
 
 export function getRemainingWeekdays(year: number, month: number): string[] {
@@ -240,7 +253,7 @@ export function isAfssBlock(b: BlockInfo, ccCache?: Map<number, string>, afssIds
 
 export async function fetchAllScheduleBlocks(year: number, month: number, tentativeIds: Set<number>): Promise<BlockInfo[]> {
   const allIds = new Set([...TEAM_IDS, ...tentativeIds]);
-  const days = getRemainingWeekdays(year, month);
+  const days = getFullMonthWeekdays(year, month);
   const blockList: BlockInfo[] = [];
   const BATCH = 3;
   for (let i = 0; i < days.length; i += BATCH) {
@@ -323,7 +336,7 @@ export async function resolveUnknownCcNames(blocks: BlockInfo[], ccCache: Map<nu
       let name = "";
       if (sectionId > 0) {
         for (const cc of listOf(raw)) {
-          const n = String(cc.Name ?? (cc.CostCenter as Record<string,unknown>)?.Name ?? "");
+          const n = String((cc.CostCenter as Record<string,unknown>)?.Name ?? cc.Name ?? "");
           if (n.length > 0) { name = n; break; }
         }
       } else {
