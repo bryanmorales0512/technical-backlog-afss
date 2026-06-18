@@ -624,13 +624,6 @@ export default function Dashboard2Page() {
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
-        <button
-          onClick={() => { load(true); loadLeave(true); loadTechSupport(true); loadAfacProspect(true); loadFilterPublicHolidays(); }}
-          disabled={techRefreshing}
-          className="shrink-0 px-3 py-1 rounded bg-neutral-100 hover:bg-neutral-200 text-xs disabled:opacity-50"
-        >
-          {techRefreshing ? (refreshSecsLeft > 0 ? `Refreshing… (${refreshSecsLeft}s)` : "Almost done…") : "Refresh now"}
-        </button>
       </div>
 
       <div className="p-4 w-full overflow-x-auto">
