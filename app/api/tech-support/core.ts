@@ -94,7 +94,7 @@ export function scheduleCcIdRefresh(): void {
 
 export function obItCacheFile(year: number, month: number, nodc = false) {
   const tag = nodc ? "-nodc" : "";
-  return join(CACHE_DIR, `afss-tech-support-v109${tag}-${year}-${String(month).padStart(2, "0")}.json`);
+  return join(CACHE_DIR, `afss-tech-support-v110${tag}-${year}-${String(month).padStart(2, "0")}.json`);
 }
 export async function readObItCache(year: number, month: number, nodc = false): Promise<{ data: { otherBillable: TechSupportStats; investedTime: TechSupportStats }; ts: number } | null> {
   try { return JSON.parse(await fs.readFile(obItCacheFile(year, month, nodc), "utf-8")); } catch { return null; }
@@ -103,7 +103,7 @@ export async function writeObItCache(year: number, month: number, data: { otherB
   const tag = nodc ? "-nodc" : "";
   const json = JSON.stringify({ data, ts: Date.now() });
   fs.writeFile(obItCacheFile(year, month, nodc), json, "utf-8").catch(() => {});
-  gcsWrite(`afss-tech-support-v109${tag}-${year}-${String(month).padStart(2, "0")}.json`, json);
+  gcsWrite(`afss-tech-support-v110${tag}-${year}-${String(month).padStart(2, "0")}.json`, json);
 }
 
 export function qaCacheFile() { return join(CACHE_DIR, "afss-qa-v1.json"); }
@@ -198,19 +198,6 @@ export function getMonthWeekdays(year: number, month: number): string[] {
   return days;
 }
 
-// For a future month: prepend remaining current-month days so the fetch covers
-// "today → end of target month" (matching how SimPRO schedule reports are run).
-// For current or past months: just that month's days (existing behaviour).
-export function getScheduleDays(year: number, month: number): string[] {
-  const aest       = new Date(Date.now() + 10 * 60 * 60 * 1000);
-  const todayYear  = aest.getUTCFullYear();
-  const todayMonth = aest.getUTCMonth() + 1;
-  const isFuture   = year > todayYear || (year === todayYear && month > todayMonth);
-  if (!isFuture) return getMonthWeekdays(year, month);
-  // Remaining days of current month (today → current month end) + all of target month
-  return [...getMonthWeekdays(todayYear, todayMonth), ...getMonthWeekdays(year, month)];
-}
-
 export function getRemainingWeekdays(year: number, month: number): string[] {
   const aest       = new Date(Date.now() + 10 * 60 * 60 * 1000);
   const todayYear  = aest.getUTCFullYear();
@@ -284,7 +271,7 @@ export function isAfssBlock(b: BlockInfo, ccCache?: Map<number, string>, afssIds
 
 export async function fetchAllScheduleBlocks(year: number, month: number, tentativeIds: Set<number>): Promise<BlockInfo[]> {
   const allIds = new Set([...TEAM_IDS, ...tentativeIds]);
-  const days = getScheduleDays(year, month);
+  const days = getMonthWeekdays(year, month);
   const blockList: BlockInfo[] = [];
   const BATCH = 3;
   for (let i = 0; i < days.length; i += BATCH) {
@@ -513,6 +500,14 @@ export function buildObItDeduped(year: number, month: number, forceNew = false) 
   return p;
 }
 
+function addStats(a: TechSupportStats, b: TechSupportStats): TechSupportStats {
+  return {
+    jobs:   a.jobs + b.jobs,
+    hours:  Math.round((a.hours + b.hours) * 100) / 100,
+    amount: Math.round((a.amount + b.amount) * 100) / 100,
+  };
+}
+
 async function buildObIt(year: number, month: number): Promise<{ regular: { otherBillable: TechSupportStats; investedTime: TechSupportStats }; nodc: { otherBillable: TechSupportStats; investedTime: TechSupportStats } }> {
   const tentativeIds = await getTentativeStaffIds();
   scheduleCcIdRefresh();
@@ -526,16 +521,38 @@ async function buildObIt(year: number, month: number): Promise<{ regular: { othe
   await resolveUnknownCcNames(blockList, ccCache);
   await saveCcCache(ccCache);
   const jobMap = await fetchJobDetailsMap(jobIds);
-  return {
-    regular: {
-      otherBillable: calcOtherBillable(blockList, jobMap, ccCache, false, afssIds),
-      investedTime:  calcInvestedTime(blockList, jobMap, ccCache, false, afssIds),
-    },
-    nodc: {
-      otherBillable: calcOtherBillable(blockList, jobMap, ccCache, true, afssIds),
-      investedTime:  calcInvestedTime(blockList, jobMap, ccCache, true, afssIds),
-    },
+  const regular = {
+    otherBillable: calcOtherBillable(blockList, jobMap, ccCache, false, afssIds),
+    investedTime:  calcInvestedTime(blockList, jobMap, ccCache, false, afssIds),
   };
+  const nodc = {
+    otherBillable: calcOtherBillable(blockList, jobMap, ccCache, true, afssIds),
+    investedTime:  calcInvestedTime(blockList, jobMap, ccCache, true, afssIds),
+  };
+
+  // For a future month, merge the current month's cached data so the displayed
+  // range covers "today → end of target month" (matching SimPRO's date range).
+  // This avoids fetching 44+ days in one build which causes API rate limiting.
+  const aest       = new Date(Date.now() + 10 * 60 * 60 * 1000);
+  const todayYear  = aest.getUTCFullYear();
+  const todayMonth = aest.getUTCMonth() + 1;
+  const isFuture   = year > todayYear || (year === todayYear && month > todayMonth);
+  if (isFuture) {
+    const [curReg, curNodc] = await Promise.all([
+      readObItCache(todayYear, todayMonth, false),
+      readObItCache(todayYear, todayMonth, true),
+    ]);
+    if (curReg) {
+      regular.otherBillable = addStats(curReg.data.otherBillable, regular.otherBillable);
+      regular.investedTime  = addStats(curReg.data.investedTime,  regular.investedTime);
+    }
+    if (curNodc) {
+      nodc.otherBillable = addStats(curNodc.data.otherBillable, nodc.otherBillable);
+      nodc.investedTime  = addStats(curNodc.data.investedTime,  nodc.investedTime);
+    }
+  }
+
+  return { regular, nodc };
 }
 
 export let _qaInFlight: Promise<QARawJob[]> | null = null;
