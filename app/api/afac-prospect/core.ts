@@ -12,10 +12,10 @@ const AFSS_STAFF_ID = 1581;
 export const CACHE_TTL = 60 * 60_000;
 export const EXCLUSIONS_FILE = join(process.cwd(), "data", "afac-exclusions.json");
 
-export function cacheFile() {
+export function cacheFile(filterYear?: number, filterMonth?: number) {
   const aest = new Date(Date.now() + 10 * 60 * 60 * 1000);
-  const y = aest.getUTCFullYear();
-  const m = String(aest.getUTCMonth() + 1).padStart(2, "0");
+  const y = filterYear  ?? aest.getUTCFullYear();
+  const m = String(filterMonth ?? (aest.getUTCMonth() + 1)).padStart(2, "0");
   return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-afac-prospect-v9-${y}-${m}.json`);
 }
 
@@ -64,12 +64,16 @@ export type AfacProspectResponse = {
   costCentreFiltered: boolean;
 };
 
-export async function buildData(): Promise<AfacProspectResponse> {
+export async function buildData(filterYear?: number, filterMonth?: number): Promise<AfacProspectResponse> {
   const exclusions = await loadExclusions();
 
-  const aest  = new Date(Date.now() + 10 * 60 * 60 * 1000);
-  const start = new Date(aest.getUTCFullYear() - 1, aest.getUTCMonth(), aest.getUTCDate());
-  const end   = new Date(aest.getUTCFullYear() - 1, aest.getUTCMonth() + 1, 0);
+  const aest       = new Date(Date.now() + 10 * 60 * 60 * 1000);
+  const baseYear   = filterYear  ?? aest.getUTCFullYear();
+  const baseMonth  = filterMonth ?? (aest.getUTCMonth() + 1);
+  // Always scan the full previous-year month (day 1 → last day)
+  const targetYear = baseYear - 1;
+  const start = new Date(targetYear, baseMonth - 1, 1);
+  const end   = new Date(targetYear, baseMonth, 0);
   const dateFrom = fmt(start);
   const dateTo   = fmt(end);
 
@@ -152,3 +156,4 @@ export async function warmAfacProspect(): Promise<void> {
   } catch { /* ignore */ }
   gcsWrite(`afss-afac-prospect-v9-${cacheFile().split("v9-")[1]}`, json);
 }
+

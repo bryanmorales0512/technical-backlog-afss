@@ -385,16 +385,20 @@ export default function DashboardPage() {
       setAfacExclusions(dates);
       setAfacExcSaved(true);
       setTimeout(() => setAfacExcSaved(false), 2000);
-      // Rebuild with new exclusions — keep old data visible while fetching so
-      // the UI never shows "—". New data replaces it when the fetch completes.
-      loadAfacProspect(true);
+      loadAfacProspect(true, monthFilter);
     } catch { /* ignore */ }
     setAfacExcSaving(false);
   }
 
-  function loadAfacProspect(force = false) {
-    const sfx = force ? "?force=1" : "";
-    fetch(`/api/afac-prospect${sfx}`)
+  function loadAfacProspect(force = false, mf = monthFilter) {
+    const p = new URLSearchParams();
+    if (force) p.set("force", "1");
+    if (mf !== "all") {
+      const [y, m] = mf.split("-");
+      p.set("year", y);
+      p.set("month", m);
+    }
+    fetch(`/api/afac-prospect?${p}`)
       .then(r => r.json())
       .then(d => { if (d?.jobs != null) setAfacProspect(d); })
       .catch(() => {});
@@ -477,15 +481,17 @@ export default function DashboardPage() {
     window.history.replaceState(null, "", url.toString());
   }, [monthFilter]);
 
-  // Re-fetch tech support whenever month changes.
+  // Re-fetch tech support and AFAC prospect whenever month changes.
   // Reset to null so "—" shows while loading (confirms it switched months).
   // No force — use existing cache if fresh, build fresh if cache is missing.
   useEffect(() => {
     setObData(null);
     setItData(null);
     setQaData(null);
+    setAfacProspect(null);
     loadTechSupport(false, monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
     loadFilterPublicHolidays(monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
+    loadAfacProspect(false, monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
   }, [monthFilter]);
 
   // Cold-start recovery: if tech-support data is still null 15 s after mount
@@ -1076,7 +1082,7 @@ export default function DashboardPage() {
               const supplyTech   = allMembers.filter(m => !m.role.includes("Primary APFS"))
                 .reduce((s, m) => s + getMonthHours(m), 0);
               const demandAudit  = [1, 8, 10].reduce((sum, coId) =>
-                sum + visibleCo(coId).filter(isInAnyRow).reduce((s, j) => s + (coId === 8 ? jobHours(j) : hrsForJob(j)), 0), 0
+                sum + visibleCo(coId).filter(isInAnyRow).reduce((s, j) => s + hrsForJob(j), 0), 0
               ) + (afacProspect?.hours ?? 0);
               const icSum        = (parseFloat(icRmHrs)||0) + (parseFloat(icAeHrs)||0) + (parseFloat(icFiaHrs)||0);
               const demandTech   = (obData?.hours ?? 0) + (itData?.hours ?? 0) + (qaData?.hours ?? 0) + icSum;
@@ -1204,25 +1210,23 @@ export default function DashboardPage() {
                             <button
                               onClick={() => {
                                 if (!afacExcDate || afacExclusions.includes(afacExcDate)) return;
-                                setAfacExclusions([...afacExclusions, afacExcDate].sort());
+                                const newList = [...afacExclusions, afacExcDate].sort();
                                 setAfacExcDate("");
+                                saveAfacExclusions(newList);
                               }}
-                              className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700"
-                            >Add</button>
-                            <button
-                              onClick={() => saveAfacExclusions(afacExclusions)}
                               disabled={afacExcSaving}
-                              className="text-xs px-2 py-0.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-                            >
-                              {afacExcSaving ? "Saving…" : afacExcSaved ? "Saved ✓" : "Save"}
-                            </button>
+                              className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                            >{afacExcSaving ? "Saving…" : "Add"}</button>
+                            {afacExcSaved && (
+                              <span className="text-xs text-green-600 font-semibold">Saved ✓</span>
+                            )}
                           </div>
                           {afacExclusions.length > 0 && (
                             <div className="flex flex-wrap gap-1">
                               {afacExclusions.map(d => (
                                 <span key={d} className="inline-flex items-center gap-1 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">
                                   {new Date(d + "T00:00:00").toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}
-                                  <button onClick={() => setAfacExclusions(afacExclusions.filter(x => x !== d))} className="hover:text-red-900 font-bold">×</button>
+                                  <button onClick={() => saveAfacExclusions(afacExclusions.filter(x => x !== d))} className="hover:text-red-900 font-bold">×</button>
                                 </span>
                               ))}
                             </div>
