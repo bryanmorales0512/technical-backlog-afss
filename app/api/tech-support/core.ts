@@ -530,18 +530,25 @@ async function buildObIt(year: number, month: number): Promise<{ regular: { othe
     investedTime:  calcInvestedTime(blockList, jobMap, ccCache, true, afssIds),
   };
 
-  // For a future month, merge the current month's cached data so the displayed
-  // range covers "today → end of target month" (matching SimPRO's date range).
-  // This avoids fetching 44+ days in one build which causes API rate limiting.
+  // For a future month, merge the current month's data so the displayed range
+  // covers "today → end of target month" (matching SimPRO's date range).
+  // Build the current month on the fly if its cache doesn't exist yet.
   const aest       = new Date(Date.now() + 10 * 60 * 60 * 1000);
   const todayYear  = aest.getUTCFullYear();
   const todayMonth = aest.getUTCMonth() + 1;
   const isFuture   = year > todayYear || (year === todayYear && month > todayMonth);
   if (isFuture) {
-    const [curReg, curNodc] = await Promise.all([
-      readObItCache(todayYear, todayMonth, false),
-      readObItCache(todayYear, todayMonth, true),
-    ]);
+    let curReg  = await readObItCache(todayYear, todayMonth, false);
+    let curNodc = await readObItCache(todayYear, todayMonth, true);
+    if (!curReg || !curNodc) {
+      try {
+        const curBuilt = await buildObItDeduped(todayYear, todayMonth);
+        await writeObItCache(todayYear, todayMonth, curBuilt.regular, false);
+        await writeObItCache(todayYear, todayMonth, curBuilt.nodc,    true);
+        curReg  = { data: curBuilt.regular, ts: Date.now() };
+        curNodc = { data: curBuilt.nodc,    ts: Date.now() };
+      } catch { /* proceed with target-month-only data */ }
+    }
     if (curReg) {
       regular.otherBillable = addStats(curReg.data.otherBillable, regular.otherBillable);
       regular.investedTime  = addStats(curReg.data.investedTime,  regular.investedTime);
