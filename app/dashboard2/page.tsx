@@ -442,9 +442,9 @@ export default function Dashboard2Page() {
     loadIntercompany(); // eslint-disable-line react-hooks/exhaustive-deps
     loadAfacExclusions(); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Kick off a fresh SimPRO rebuild immediately on load and pipe the result
-    // straight into state so the UI updates as soon as the rebuild finishes.
-    loadTechSupport(true); // eslint-disable-line react-hooks/exhaustive-deps
+    // Load from cache immediately (fast). The server will rebuild in the background
+    // if the cache is stale, so the next load gets fresh data automatically.
+    loadTechSupport(false); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Re-fetch shared data when this tab becomes visible so changes made in
     // the other dashboard are reflected immediately without a manual refresh.
@@ -453,7 +453,7 @@ export default function Dashboard2Page() {
         loadIntercompany(); // eslint-disable-line react-hooks/exhaustive-deps
         loadAfacExclusions(); // eslint-disable-line react-hooks/exhaustive-deps
         loadAfacProspect(); // eslint-disable-line react-hooks/exhaustive-deps
-        loadTechSupport(true); // eslint-disable-line react-hooks/exhaustive-deps
+        loadTechSupport(false); // eslint-disable-line react-hooks/exhaustive-deps
       }
     }
     document.addEventListener("visibilitychange", onVisible);

@@ -576,13 +576,21 @@ export async function warmTechSupport(): Promise<void> {
   const year  = aest.getUTCFullYear();
   const month = aest.getUTCMonth() + 1;
   scheduleCcIdRefresh();
-  const [obIt, qa] = await Promise.allSettled([
-    buildObItDeduped(year, month),
-    buildQaDeduped(),
-  ]);
-  if (obIt.status === "fulfilled") {
-    await writeObItCache(year, month, obIt.value.regular, false);
-    await writeObItCache(year, month, obIt.value.nodc,    true);
+
+  // Build QA once (not month-specific)
+  const qa = await buildQaDeduped().catch(() => null);
+  if (qa) await writeQaCache(qa);
+
+  // Build current month + next 2 months sequentially to avoid re-exhausting
+  // SimPRO's rate limit (warmAll() already hit it hard before this runs)
+  for (let i = 0; i < 3; i++) {
+    const d = new Date(year, month - 1 + i, 1);
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const obIt = await buildObItDeduped(y, m).catch(() => null);
+    if (obIt) {
+      await writeObItCache(y, m, obIt.regular, false);
+      await writeObItCache(y, m, obIt.nodc,    true);
+    }
   }
-  if (qa.status === "fulfilled") await writeQaCache(qa.value);
 }
