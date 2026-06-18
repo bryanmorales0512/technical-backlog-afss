@@ -531,19 +531,22 @@ export default function Dashboard2Page() {
   const filterJobs = (jobs: RawJob[]) => {
     if (monthFilter === "all") return jobs;
     const [fy, fm] = monthFilter.split("-").map(Number);
+    const isFutureMonth = fy > now.getFullYear() || (fy === now.getFullYear() && fm > now.getMonth() + 1);
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const monthEndStr = `${fy}-${String(fm).padStart(2, "0")}-${String(new Date(fy, fm, 0).getDate()).padStart(2, "0")}`;
     return jobs.filter(j => {
-      // Exclude jobs with DueDate beyond the filter year
       const due = j.DueDate as string | null;
       if (due && new Date(due).getFullYear() > fy) return false;
 
       const sched = j._scheduledDate as string | null;
       if (sched) {
-        // Scheduled jobs: exact match on the selected month only
+        if (isFutureMonth) return sched >= todayStr && sched <= monthEndStr;
         const dt = new Date(sched);
         return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
       }
-      // Tentative jobs (no scheduled date): match by DueDate exact month
-      if (!due) return true; // no due date — include
+      // Tentative jobs (no scheduled date): match by DueDate
+      if (!due) return true;
+      if (isFutureMonth) return due >= todayStr && due <= monthEndStr;
       const dt = new Date(due);
       return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
     });
