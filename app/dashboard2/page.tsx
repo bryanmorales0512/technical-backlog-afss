@@ -559,13 +559,14 @@ export default function Dashboard2Page() {
         const dt = new Date(sched);
         return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
       }
-      // Tentative jobs (no scheduled date): include in future-month views if due date
-      // is today or later — they're unscheduled work that can be planned any month.
-      // Only exclude jobs whose due date is already in the past.
-      // CHUBB (company 8): always include all pending jobs — past-due still means outstanding work.
+      // Tentative jobs (no scheduled date):
+      // CHUBB (company 8): always include — past-due still means outstanding work.
+      // RM AFSS (company 1): include only if DueDate falls in the selected month.
+      // Others: include if DueDate >= today.
       if (!due || (j._company as number) === 8) return true;
-      if (isFutureMonth) return due >= todayStr;
       const dt = new Date(due);
+      if ((j._company as number) === 1) return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
+      if (isFutureMonth) return due >= todayStr;
       return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
     });
   };
@@ -717,7 +718,7 @@ export default function Dashboard2Page() {
                     Total Backlog as at end of period
                   </td>
                   <StatCells s={(() => { const icSum = (parseFloat(icRmHrs)||0)+(parseFloat(icAeHrs)||0)+(parseFloat(icFiaHrs)||0); const b = COMPANIES.reduce((acc, co) => { const s = agg(visibleCo(co.id).filter(isInAnyRow), co.id === 8 ? jobHoursAfac : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice); return { count: acc.count + s.count, hrs: acc.hrs + s.hrs, amt: acc.amt + s.amt }; }, { count: 0, hrs: 0, amt: 0 }); return { count: b.count + (obData?.jobs ?? 0) + (itData?.jobs ?? 0) + (qaData?.jobs ?? 0) + (afacProspect?.jobs ?? 0), hrs: b.hrs + (afacProspect?.hours ?? 0) + (obData?.hours ?? 0) + (itData?.hours ?? 0) + (qaData?.hours ?? 0) + icSum, amt: b.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) + (icSum * 100) }; })()} bold />
-                  {COMPANIES.map(co => <StatCells key={co.id} s={agg(visibleCo(co.id).filter(isInAnyRow), co.id === 8 ? jobHoursAfac : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice)} bold />)}
+                  {COMPANIES.map(co => <StatCells key={co.id} s={agg(visibleCo(co.id).filter(isInAnyRow), co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHours : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice)} bold />)}
                 </tr>
 
                 {/* All Companies label */}
@@ -751,7 +752,7 @@ export default function Dashboard2Page() {
                         <StatCells s={(() => { if (row.key === "complete") return zero; const base = agg(all, getHrs); if (row.key === "scheduled") return { count: base.count + (obData?.jobs ?? 0) + (itData?.jobs ?? 0), hrs: base.hrs + (obData?.hours ?? 0) + (itData?.hours ?? 0), amt: base.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) }; if (row.key === "tentative") return { count: base.count + (qaData?.jobs ?? 0) + (afacProspect?.jobs ?? 0), hrs: base.hrs + (qaData?.hours ?? 0) + (afacProspect?.hours ?? 0), amt: base.amt + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) }; return base; })()} />
                         {COMPANIES.map(co => {
                           const jobs = visibleCo(co.id).filter(rowFilter);
-                          const coGetHrs = co.id === 8 ? jobHoursAfac : getHrs;
+                          const coGetHrs = co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHours : getHrs;
                           const s = agg(jobs, coGetHrs, co.id === 8 ? jobPriceAfac : jobPrice);
                           return <StatCells key={co.id} s={row.key === "complete" ? zero : s} />;
                         })}
