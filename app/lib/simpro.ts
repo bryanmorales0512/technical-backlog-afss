@@ -283,15 +283,25 @@ export function fetchAndCacheDeduped(company: number, stage: string): Promise<Re
   return p;
 }
 
-// Warm combos sequentially. If GCS has a fresh cache, skip the SimPRO fetch —
-// this makes warmAll instant on every deployment after the first.
-export async function warmAll(): Promise<{ company: number; stage: string; ok: boolean; ms: number }[]> {
+// Warm combos sequentially. Restore from GCS first — this makes warmAll instant
+// on every deployment after the first (GCS has the data from the previous run).
+// Only falls through to SimPRO if GCS is empty, stale (> 4h), or has no jobs.
+export async function warmAll(): Promise<{ company: number; stage: string; ok: boolean; ms: number; source?: string }[]> {
+  const GCS_WARM_TTL = 4 * 60 * 60 * 1000; // 4 hours
   const results = [];
   for (const { company, stage } of WARM_COMBOS) {
     const t = Date.now();
     try {
+      const gcsEntry = await readCacheFromGcs(company, stage);
+      if (gcsEntry && gcsEntry.data.length > 0 && !gcsEntry.partial &&
+          Date.now() - gcsEntry.ts < GCS_WARM_TTL) {
+        // GCS has fresh data — local file already written by readCacheFromGcs.
+        // The data route's stale-while-revalidate will refresh it on first request.
+        results.push({ company, stage, ok: true, ms: Date.now() - t, source: "gcs" });
+        continue;
+      }
       await fetchAndCacheDeduped(company, stage);
-      results.push({ company, stage, ok: true, ms: Date.now() - t });
+      results.push({ company, stage, ok: true, ms: Date.now() - t, source: "simpro" });
     } catch {
       results.push({ company, stage, ok: false, ms: Date.now() - t });
     }
