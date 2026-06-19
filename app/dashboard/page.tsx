@@ -71,6 +71,16 @@ function jobHoursAfac(job: RawJob): number {
   return committed > 0 ? committed : 2;
 }
 
+// RM AFSS (Company 1): use max(Committed, 2) — picks up large scheduled jobs
+// (e.g. 5, 6, 7 hr audits) via Committed, guarantees minimum 2 hrs for unscheduled.
+function jobHoursRm(job: RawJob): number {
+  const totals    = job.Totals as Record<string, unknown> | undefined;
+  const resCost   = totals?.ResourcesCost as Record<string, unknown> | undefined;
+  const labHours  = resCost?.LaborHours   as Record<string, unknown> | undefined;
+  const committed = labHours?.Committed   != null ? Number(labHours.Committed) : 0;
+  return committed > 2 ? committed : 2;
+}
+
 function scheduledHrs(job: RawJob): number {
   return Number(job._scheduledHours ?? 0);
 }
@@ -708,7 +718,7 @@ export default function DashboardPage() {
                     Total Backlog as at end of period
                   </td>
                   <StatCells s={(() => { const icSum = (parseFloat(icRmHrs)||0)+(parseFloat(icAeHrs)||0)+(parseFloat(icFiaHrs)||0); const b = COMPANIES.reduce((acc, co) => { const s = agg(visibleCo(co.id).filter(isInAnyRow), co.id === 8 ? jobHoursAfac : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice); return { count: acc.count + s.count, hrs: acc.hrs + s.hrs, amt: acc.amt + s.amt }; }, { count: 0, hrs: 0, amt: 0 }); return { count: b.count + (obData?.jobs ?? 0) + (itData?.jobs ?? 0) + (qaData?.jobs ?? 0) + (afacProspect?.jobs ?? 0), hrs: b.hrs + (afacProspect?.hours ?? 0) + (obData?.hours ?? 0) + (itData?.hours ?? 0) + (qaData?.hours ?? 0) + icSum, amt: b.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) + (icSum * 100) }; })()} bold />
-                  {COMPANIES.map(co => <StatCells key={co.id} s={agg(visibleCo(co.id).filter(isInAnyRow), co.id === 8 ? jobHoursAfac : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice)} bold />)}
+                  {COMPANIES.map(co => <StatCells key={co.id} s={agg(visibleCo(co.id).filter(isInAnyRow), co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHoursRm : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice)} bold />)}
                 </tr>
 
                 {/* All Companies label */}
@@ -742,7 +752,7 @@ export default function DashboardPage() {
                         <StatCells s={(() => { if (row.key === "complete") return zero; const base = agg(all, getHrs); if (row.key === "scheduled") return { count: base.count + (obData?.jobs ?? 0) + (itData?.jobs ?? 0), hrs: base.hrs + (obData?.hours ?? 0) + (itData?.hours ?? 0), amt: base.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) }; if (row.key === "tentative") return { count: base.count + (qaData?.jobs ?? 0) + (afacProspect?.jobs ?? 0), hrs: base.hrs + (qaData?.hours ?? 0) + (afacProspect?.hours ?? 0), amt: base.amt + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) }; return base; })()} />
                         {COMPANIES.map(co => {
                           const jobs = visibleCo(co.id).filter(rowFilter);
-                          const coGetHrs = co.id === 8 ? jobHoursAfac : getHrs;
+                          const coGetHrs = co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHoursRm : getHrs;
                           const s = agg(jobs, coGetHrs, co.id === 8 ? jobPriceAfac : jobPrice);
                           return <StatCells key={co.id} s={row.key === "complete" ? zero : s} />;
                         })}
