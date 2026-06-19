@@ -1115,9 +1115,10 @@ export default function Dashboard2Page() {
                 .reduce((s, m) => s + getMonthHours(m), 0);
               const supplyTech   = allMembers.filter(m => !m.role.includes("Primary APFS"))
                 .reduce((s, m) => s + getMonthHours(m), 0);
-              const demandAudit  = [1, 8, 10].reduce((sum, coId) =>
-                sum + visibleCo(coId).filter(isInAnyRow).reduce((s, j) => s + hrsForJob(j), 0), 0
-              ) + (afacProspect?.hours ?? 0);
+              const demandAudit  = [1, 8, 10].reduce((sum, coId) => {
+                const getH = coId === 8 ? jobHoursAfac : coId === 1 ? jobHoursRm : hrsForJob;
+                return sum + visibleCo(coId).filter(isInAnyRow).reduce((s, j) => s + getH(j), 0);
+              }, 0) + (afacProspect?.hours ?? 0);
               const icSum        = (parseFloat(icRmHrs)||0) + (parseFloat(icAeHrs)||0) + (parseFloat(icFiaHrs)||0);
               const demandTech   = (obData?.hours ?? 0) + (itData?.hours ?? 0) + (qaData?.hours ?? 0) + icSum;
               const excessAudit     = demandAudit - supplyAudit;
