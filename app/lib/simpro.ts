@@ -155,7 +155,12 @@ export async function fetchCFSPJobs(company: number, stage: string): Promise<Rec
     }
   }
 
-  return allItems;
+  if (company === 8) return allItems;
+
+  return allItems.filter((j) => {
+    const techs = j.Technicians as Record<string, unknown>[] | undefined;
+    return techs?.some((t) => (t as Record<string, unknown>).ID === CFSP_ID);
+  });
 }
 
 export async function fetchAndCache(company: number, stage: string): Promise<Record<string, unknown>[]> {
