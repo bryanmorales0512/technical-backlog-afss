@@ -561,12 +561,12 @@ export default function Dashboard2Page() {
       }
       // Tentative jobs (no scheduled date):
       // CHUBB (company 8): always include — past-due still means outstanding work.
-      // RM AFSS (company 1): include only if DueDate falls in the selected month.
+      // RM AFSS (company 1): include if DueDate is from today through end of selected month.
       // Others: include if DueDate >= today.
       if (!due || (j._company as number) === 8) return true;
-      const dt = new Date(due);
-      if ((j._company as number) === 1) return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
+      if ((j._company as number) === 1) return due >= todayStr && due <= monthEndStr;
       if (isFutureMonth) return due >= todayStr;
+      const dt = new Date(due);
       return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
     });
   };
