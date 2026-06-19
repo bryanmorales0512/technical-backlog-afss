@@ -562,7 +562,8 @@ export default function Dashboard2Page() {
       // Tentative jobs (no scheduled date): include in future-month views if due date
       // is today or later — they're unscheduled work that can be planned any month.
       // Only exclude jobs whose due date is already in the past.
-      if (!due) return true;
+      // CHUBB (company 8): always include all pending jobs — past-due still means outstanding work.
+      if (!due || (j._company as number) === 8) return true;
       if (isFutureMonth) return due >= todayStr;
       const dt = new Date(due);
       return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
