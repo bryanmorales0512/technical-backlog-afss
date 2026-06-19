@@ -5,6 +5,8 @@ import {
   CACHE_TTL,
 } from "../../lib/simpro";
 
+export const maxDuration = 300;
+
 export async function GET(req: Request) {
   try {
     const url     = new URL(req.url);

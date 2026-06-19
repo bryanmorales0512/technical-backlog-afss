@@ -225,6 +225,7 @@ export default function Dashboard2Page() {
     setLoading(true);
     setIsPartial(true); // assume partial until proven otherwise — prevents wrong tentative count flash
     let anyPartial = false;
+    let anyFailed  = false;
     const sfx = force ? "&force=1" : "";
     // Accumulator for this load cycle — replaced company-by-company as responses arrive
     const next: Record<number, RawJob[]> = {};
@@ -244,7 +245,7 @@ export default function Dashboard2Page() {
             setByCompany(prev => ({ ...prev, [co.id]: next[co.id] }));
             setHasData(true);
             setUpdated(new Date());
-          } catch { /* skip failed company/stage — auto-retry triggers below */ }
+          } catch { anyFailed = true; /* skip failed company/stage — retry triggers below */ }
         })
       )
     );
@@ -254,6 +255,10 @@ export default function Dashboard2Page() {
     if (anyPartial) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
       partialTimerRef.current = setTimeout(() => load(), 5_000);
+    } else if (anyFailed) {
+      // Some companies failed (e.g. cold cache still warming) — retry after 30 s
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      partialTimerRef.current = setTimeout(() => load(), 30_000);
     }
   }
 
