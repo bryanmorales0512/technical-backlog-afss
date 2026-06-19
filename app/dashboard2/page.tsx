@@ -549,9 +549,11 @@ export default function Dashboard2Page() {
         const dt = new Date(sched);
         return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
       }
-      // Tentative jobs (no scheduled date): match by DueDate
+      // Tentative jobs (no scheduled date): include in future-month views if due date
+      // is today or later — they're unscheduled work that can be planned any month.
+      // Only exclude jobs whose due date is already in the past.
       if (!due) return true;
-      if (isFutureMonth) return due >= todayStr && due <= monthEndStr;
+      if (isFutureMonth) return due >= todayStr;
       const dt = new Date(due);
       return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
     });
