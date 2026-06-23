@@ -241,11 +241,11 @@ export default function DashboardPage() {
   });
   const [techRefreshing, setTechRefreshing] = useState(false);
   const [refreshSecsLeft, setRefreshSecsLeft] = useState(0);
+  const [syncing, setSyncing] = useState(false);
 
-  async function load(force = false) {
+  async function load(force = false, silent = false) {
     if (partialTimerRef.current) { clearTimeout(partialTimerRef.current); partialTimerRef.current = null; }
-    setLoading(true);
-    setIsPartial(true); // assume partial until proven otherwise — prevents wrong tentative count flash
+    if (silent) { setSyncing(true); } else { setLoading(true); setIsPartial(true); }
     let anyPartial = false;
     let anyFailed  = false;
     const sfx = force ? "&force=1" : "";
@@ -257,7 +257,7 @@ export default function DashboardPage() {
         (["Pending", "Progress"] as const).map(async stage => {
           try {
             const r = await fetch(`/api/data?company=${co.id}&stage=${stage}${sfx}`);
-            if (r.headers.get("X-Partial") === "1") { anyPartial = true; setIsPartial(true); }
+            if (r.headers.get("X-Partial") === "1") { anyPartial = true; if (!silent) setIsPartial(true); }
             const d = await r.json();
             if (d?.error) throw new Error(d.error); // error response — retry later
             const jobs: RawJob[] = Array.isArray(d) ? d : (d.Result ?? []);
@@ -272,21 +272,23 @@ export default function DashboardPage() {
       )
     );
 
-    setIsPartial(anyPartial);
-    setLoading(false);
-    if (anyPartial) {
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      partialTimerRef.current = setTimeout(() => load(), 5_000);
-    } else if (anyFailed) {
-      // Some companies failed (e.g. cold cache still warming) — retry after 30 s
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      partialTimerRef.current = setTimeout(() => load(), 30_000);
+    if (silent) { setSyncing(false); } else { setIsPartial(anyPartial); setLoading(false); }
+    if (!silent) {
+      if (anyPartial) {
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        partialTimerRef.current = setTimeout(() => load(), 5_000);
+      } else if (anyFailed) {
+        // Some companies failed (e.g. cold cache still warming) — retry after 30 s
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        partialTimerRef.current = setTimeout(() => load(), 30_000);
+      }
     }
   }
 
   useEffect(() => {
-    load(); // eslint-disable-line react-hooks/exhaustive-deps
-    const t = setInterval(() => { load(false); loadAfacProspect(false, monthFilterRef.current); loadTechSupport(false, monthFilterRef.current); }, 3_600_000);
+    load(false); // eslint-disable-line react-hooks/exhaustive-deps
+    setTimeout(() => load(true, true), 200); // eslint-disable-line react-hooks/exhaustive-deps
+    const t = setInterval(() => { load(true, true); loadAfacProspect(true, monthFilterRef.current); loadTechSupport(true, monthFilterRef.current); }, 3_600_000);
     const tRefresh = setTimeout(() => loadTechSupport(false, monthFilterRef.current), 90_000); // eslint-disable-line react-hooks/exhaustive-deps
     return () => { clearInterval(t); clearTimeout(tRefresh); if (partialTimerRef.current) clearTimeout(partialTimerRef.current); };
   }, []); // intentional: load is stable, we only want this to run once
@@ -657,6 +659,7 @@ export default function DashboardPage() {
           {updated && !loading && (
             <span className="text-xs text-neutral-400 shrink-0">Updated: {updated.toLocaleTimeString()}</span>
           )}
+          {syncing && !loading && <span className="text-xs text-blue-400 animate-pulse shrink-0">Syncing…</span>}
           {isPartial && !loading && (
             <span className="text-xs text-amber-500 animate-pulse shrink-0">Refreshing…</span>
           )}
