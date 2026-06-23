@@ -109,50 +109,32 @@ export async function GET(req: Request) {
   const obItCached = await readObItCache(year, month, nodc);
   const obItFresh  = obItCached && (Date.now() - obItCached.ts < OB_IT_CACHE_TTL);
   let obItData: { otherBillable: { jobs: number; hours: number; amount: number }; investedTime: { jobs: number; hours: number; amount: number } };
-  if (force || !obItFresh) {
-    if (!force && obItCached) {
-      // Stale cache exists — return it immediately so the UI shows data right away,
-      // then rebuild in the background so the next request gets fresh data.
-      buildObItDeduped(year, month, false)
-        .then(async built => {
-          await writeObItCache(year, month, built.regular, false);
-          await writeObItCache(year, month, built.nodc,    true);
-        })
-        .catch(() => {});
-      obItData = obItCached.data;
-    } else {
-      // force=true or no cache at all — must wait for a fresh build.
-      try {
-        const built = await buildObItDeduped(year, month, force);
-        await writeObItCache(year, month, built.regular, false);
-        await writeObItCache(year, month, built.nodc,    true);
-        obItData = nodc ? built.nodc : built.regular;
-      } catch {
-        obItData = obItCached?.data ?? { otherBillable: { jobs: 0, hours: 0, amount: 0 }, investedTime: { jobs: 0, hours: 0, amount: 0 } };
-      }
-    }
-  } else {
+  if (obItFresh && !force) {
     obItData = obItCached.data;
+  } else {
+    // Always fetch live from SimPRO when cache is stale or forced.
+    try {
+      const built = await buildObItDeduped(year, month, force);
+      await writeObItCache(year, month, built.regular, false);
+      await writeObItCache(year, month, built.nodc,    true);
+      obItData = nodc ? built.nodc : built.regular;
+    } catch {
+      obItData = obItCached?.data ?? { otherBillable: { jobs: 0, hours: 0, amount: 0 }, investedTime: { jobs: 0, hours: 0, amount: 0 } };
+    }
   }
 
   const qaCached = await readQaCache();
   const qaFresh  = qaCached && (Date.now() - qaCached.ts < QA_CACHE_TTL);
   let qaRawJobs: import("./core").QARawJob[];
-  if (force || !qaFresh) {
-    if (!force && qaCached) {
-      // Same stale-while-revalidate for QA data.
-      buildQaDeduped(false).then(jobs => writeQaCache(jobs)).catch(() => {});
-      qaRawJobs = qaCached.data;
-    } else {
-      try {
-        qaRawJobs = await buildQaDeduped(force);
-        await writeQaCache(qaRawJobs);
-      } catch {
-        qaRawJobs = qaCached?.data ?? [];
-      }
-    }
-  } else {
+  if (qaFresh && !force) {
     qaRawJobs = qaCached.data;
+  } else {
+    try {
+      qaRawJobs = await buildQaDeduped(force);
+      await writeQaCache(qaRawJobs);
+    } catch {
+      qaRawJobs = qaCached?.data ?? [];
+    }
   }
 
   return NextResponse.json(

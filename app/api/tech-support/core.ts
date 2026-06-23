@@ -73,6 +73,7 @@ export type TechSupportResponse = {
   otherBillable:    TechSupportStats;
   investedTime:     TechSupportStats;
   qualityAssurance: TechSupportStats;
+  stale?:           boolean;
 };
 
 const CACHE_DIR = process.env.CACHE_DIR ?? os.tmpdir();

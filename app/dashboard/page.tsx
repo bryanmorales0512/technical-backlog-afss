@@ -191,7 +191,7 @@ export default function DashboardPage() {
   const [hasData,   setHasData]   = useState(false);
   const [updated,   setUpdated]   = useState<Date | null>(null);
   const [isPartial, setIsPartial] = useState(false);
-  const partialTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const partialTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [now,            setNow]            = useState(() => new Date());
   const [team,           setTeam]           = useState<TeamMember[]>([]);
   const [publicHolidays, setPublicHolidays] = useState<PublicHoliday[]>([]);
@@ -212,6 +212,10 @@ export default function DashboardPage() {
     }
     return "all";
   });
+  // Mutable ref always tracks the latest monthFilter so stale-closure callbacks
+  // (visibilitychange handler, 90 s timer, 1 h interval) can read the current value,
+  // and in-flight fetch callbacks can discard responses for the wrong month.
+  const monthFilterRef = useRef<string>(monthFilter);
   const [afacProspect,   setAfacProspect]   = useState<AfacProspect | null>(null);
   const [afacExclusions, setAfacExclusions] = useState<string[]>([]);
   const [afacExcDate,    setAfacExcDate]    = useState("");
@@ -224,10 +228,17 @@ export default function DashboardPage() {
   const [icSaving, setIcSaving] = useState(false);
   const [icSaved,  setIcSaved]  = useState(false);
 
-  // Technical Support Works — all three sections auto-fetched from API
-  const [obData, setObData] = useState<{ jobs: number; hours: number; amount: number } | null>(null);
-  const [itData, setItData] = useState<{ jobs: number; hours: number; amount: number } | null>(null);
-  const [qaData, setQaData] = useState<{ jobs: number; hours: number; amount: number } | null>(null);
+  // Technical Support Works — all three sections auto-fetched from API.
+  // Initialise from localStorage so last-known values show instantly on refresh.
+  const [obData, setObData] = useState<{ jobs: number; hours: number; amount: number } | null>(() => {
+    try { const mf = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("m") ?? "all") : "all"; const s = localStorage.getItem(`d1-ts-ob-${mf}`); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  const [itData, setItData] = useState<{ jobs: number; hours: number; amount: number } | null>(() => {
+    try { const mf = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("m") ?? "all") : "all"; const s = localStorage.getItem(`d1-ts-it-${mf}`); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  const [qaData, setQaData] = useState<{ jobs: number; hours: number; amount: number } | null>(() => {
+    try { const mf = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("m") ?? "all") : "all"; const s = localStorage.getItem(`d1-ts-qa-${mf}`); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
   const [techRefreshing, setTechRefreshing] = useState(false);
   const [refreshSecsLeft, setRefreshSecsLeft] = useState(0);
 
@@ -275,8 +286,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load(); // eslint-disable-line react-hooks/exhaustive-deps
-    const t = setInterval(() => { load(false); loadAfacProspect(false); loadTechSupport(false); }, 3_600_000);
-    const tRefresh = setTimeout(() => loadTechSupport(false), 90_000); // eslint-disable-line react-hooks/exhaustive-deps
+    const t = setInterval(() => { load(false); loadAfacProspect(false, monthFilterRef.current); loadTechSupport(false, monthFilterRef.current); }, 3_600_000);
+    const tRefresh = setTimeout(() => loadTechSupport(false, monthFilterRef.current), 90_000); // eslint-disable-line react-hooks/exhaustive-deps
     return () => { clearInterval(t); clearTimeout(tRefresh); if (partialTimerRef.current) clearTimeout(partialTimerRef.current); };
   }, []); // intentional: load is stable, we only want this to run once
 
@@ -306,7 +317,16 @@ export default function DashboardPage() {
   function loadLeave(force = false) {
     const sfx = force ? "?force=1" : "";
     fetch(`/api/leave${sfx}`).then(r => r.json()).then(d => {
-      if (d.team) { setTeam(d.team); setPublicHolidays(d.publicHolidays ?? []); }
+      if (d.team) {
+        setTeam(d.team);
+        // Only apply leave API's public holidays when viewing the current month.
+        // For other months, loadFilterPublicHolidays sets the correct holidays and
+        // we must not let a slow loadLeave response overwrite them with the wrong month's data.
+        const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        if (monthFilterRef.current === "all" || monthFilterRef.current === curKey) {
+          setPublicHolidays(d.publicHolidays ?? []);
+        }
+      }
       else setTeam(d); // backward compat
     }).catch(() => {});
   }
@@ -425,7 +445,7 @@ export default function DashboardPage() {
     }
     fetch(`/api/afac-prospect?${p}`)
       .then(r => r.json())
-      .then(d => { if (d?.jobs != null) setAfacProspect(d); })
+      .then(d => { if (monthFilterRef.current !== mf) return; if (d?.jobs != null) setAfacProspect(d); })
       .catch(() => {});
   }
 
@@ -443,9 +463,10 @@ export default function DashboardPage() {
     fetch(`/api/tech-support?${p}`)
       .then(r => r.json())
       .then(d => {
-        if (d?.otherBillable    != null) setObData(d.otherBillable);
-        if (d?.investedTime     != null) setItData(d.investedTime);
-        if (d?.qualityAssurance != null) setQaData(d.qualityAssurance);
+        if (monthFilterRef.current !== mf) return; // discard stale response
+        if (d?.otherBillable    != null) { setObData(d.otherBillable);    try { localStorage.setItem(`d1-ts-ob-${mf}`, JSON.stringify(d.otherBillable));    } catch {} }
+        if (d?.investedTime     != null) { setItData(d.investedTime);     try { localStorage.setItem(`d1-ts-it-${mf}`, JSON.stringify(d.investedTime));     } catch {} }
+        if (d?.qualityAssurance != null) { setQaData(d.qualityAssurance); try { localStorage.setItem(`d1-ts-qa-${mf}`, JSON.stringify(d.qualityAssurance)); } catch {} }
       })
       .catch(() => {})
       .finally(() => { if (force) setTechRefreshing(false); });
@@ -468,8 +489,8 @@ export default function DashboardPage() {
       if (document.visibilityState === "visible") {
         loadIntercompany(); // eslint-disable-line react-hooks/exhaustive-deps
         loadAfacExclusions(); // eslint-disable-line react-hooks/exhaustive-deps
-        loadAfacProspect(); // eslint-disable-line react-hooks/exhaustive-deps
-        loadTechSupport(false); // eslint-disable-line react-hooks/exhaustive-deps
+        loadAfacProspect(false, monthFilterRef.current); // eslint-disable-line react-hooks/exhaustive-deps
+        loadTechSupport(false, monthFilterRef.current); // eslint-disable-line react-hooks/exhaustive-deps
       }
     }
     document.addEventListener("visibilitychange", onVisible);
@@ -498,8 +519,10 @@ export default function DashboardPage() {
     if (eodTick > 0) loadLeave(true); // eslint-disable-line react-hooks/exhaustive-deps
   }, [eodTick]);
 
-  // Sync month filter to URL so it survives hard reloads
+  // Sync month filter to URL so it survives hard reloads; keep ref current so
+  // stale callbacks can always see the latest selected month.
   useEffect(() => {
+    monthFilterRef.current = monthFilter;
     const url = new URL(window.location.href);
     if (monthFilter === "all") url.searchParams.delete("m");
     else url.searchParams.set("m", monthFilter);
@@ -507,12 +530,16 @@ export default function DashboardPage() {
   }, [monthFilter]);
 
   // Re-fetch tech support and AFAC prospect whenever month changes.
-  // Reset to null so "—" shows while loading (confirms it switched months).
-  // No force — use existing cache if fresh, build fresh if cache is missing.
+  // Restore last-known values immediately so dashes never flash on screen.
   useEffect(() => {
-    setObData(null);
-    setItData(null);
-    setQaData(null);
+    try {
+      const ob = localStorage.getItem(`d1-ts-ob-${monthFilter}`);
+      const it = localStorage.getItem(`d1-ts-it-${monthFilter}`);
+      const qa = localStorage.getItem(`d1-ts-qa-${monthFilter}`);
+      setObData(ob ? JSON.parse(ob) : null);
+      setItData(it ? JSON.parse(it) : null);
+      setQaData(qa ? JSON.parse(qa) : null);
+    } catch { setObData(null); setItData(null); setQaData(null); }
     setAfacProspect(null);
     loadTechSupport(false, monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
     loadFilterPublicHolidays(monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
@@ -602,7 +629,7 @@ export default function DashboardPage() {
     const [fy, fm] = monthFilter.split("-").map(Number);
     if (fy === now.getFullYear() && fm === now.getMonth() + 1) return member.monthlyHours;
     const isFuture = fy > now.getFullYear() || (fy === now.getFullYear() && fm > now.getMonth() + 1);
-    if (isFuture) return member.monthlyHours + totalWorkingDaysInMonth(fy, fm) - publicHolidays.length * 8;
+    if (isFuture) return totalWorkingDaysInMonth(fy, fm) - publicHolidays.length * 8;
     return totalWorkingDaysInMonth(fy, fm) - publicHolidays.length * 8;
   };
 
@@ -853,8 +880,9 @@ export default function DashboardPage() {
                     <td className="border border-gray-400 px-2 py-1 text-center text-xs text-red-600">−{publicHolidays.length * 8}</td>
                     <td className="border border-gray-400 px-2 py-1 text-xs text-red-600">
                       {publicHolidays.map(ph => {
-                        const [, , d] = ph.date.split("-");
-                        return `${ph.name} (${parseInt(d)} ${now.toLocaleString("en-AU", { month: "short" })})`;
+                        const [hy, hm, d] = ph.date.split("-");
+                        const hDate = new Date(Number(hy), Number(hm) - 1, 1);
+                        return `${ph.name} (${parseInt(d)} ${hDate.toLocaleString("en-AU", { month: "short" })})`;
                       }).join(" · ")}
                     </td>
                   </tr>
@@ -1118,7 +1146,7 @@ export default function DashboardPage() {
               const excessDaysTech  = excessTech / 8;
               const supplyOverall   = supplyAudit + supplyTech;
               const demandOverall   = demandAudit + demandTech;
-              const varianceHours   = -(Math.abs(supplyOverall - demandOverall));
+              const varianceHours   = supplyOverall - demandOverall;
               const varianceDays    = varianceHours / 8;
               const varianceWeeks   = varianceDays / 5;
               const fmtN = (n: number) => n >= 0 ? n.toFixed(2) : `-(${Math.abs(n).toFixed(2)})`;
