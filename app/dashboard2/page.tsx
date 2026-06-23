@@ -292,8 +292,7 @@ export default function Dashboard2Page() {
   }
 
   useEffect(() => {
-    load(false); // eslint-disable-line react-hooks/exhaustive-deps
-    setTimeout(() => load(true, true), 200); // eslint-disable-line react-hooks/exhaustive-deps
+    load(false).then(() => load(true, true)); // eslint-disable-line react-hooks/exhaustive-deps
     const t = setInterval(() => { load(true, true); loadAfacProspect(true, monthFilterRef.current); loadTechSupport(true, monthFilterRef.current); }, 3_600_000);
     const tRefresh = setTimeout(() => loadTechSupport(false, monthFilterRef.current), 90_000); // eslint-disable-line react-hooks/exhaustive-deps
     return () => { clearInterval(t); clearTimeout(tRefresh); if (partialTimerRef.current) clearTimeout(partialTimerRef.current); };
