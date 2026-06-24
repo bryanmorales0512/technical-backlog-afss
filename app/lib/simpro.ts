@@ -159,13 +159,16 @@ export async function fetchCFSPJobs(company: number, stage: string): Promise<Rec
 
   return allItems.filter((j) => {
     const techs = j.Technicians as Record<string, unknown>[] | undefined;
-    return techs?.some((t) => (t as Record<string, unknown>).ID === CFSP_ID);
+    return techs?.some((t) => Number((t as Record<string, unknown>).ID) === CFSP_ID);
   });
 }
 
 export async function fetchAndCache(company: number, stage: string): Promise<Record<string, unknown>[]> {
   const cfspJobs = await fetchCFSPJobs(company, stage);
   if (cfspJobs.length === 0) {
+    // Don't overwrite a good cache with an empty result — may be a transient API glitch.
+    const existing = await readCacheRaw(company, stage);
+    if (existing && existing.data.length > 0) return existing.data;
     await writeCache(company, stage, []);
     return [];
   }

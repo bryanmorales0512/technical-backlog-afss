@@ -625,6 +625,10 @@ export default function DashboardPage() {
   const supplyMonthDate = monthFilter === "all"
     ? now
     : (() => { const [fy, fm] = monthFilter.split("-").map(Number); return new Date(fy, fm - 1, 1); })();
+  const isFutureMonthFilter = monthFilter !== "all" && (() => {
+    const [fy, fm] = monthFilter.split("-").map(Number);
+    return fy > now.getFullYear() || (fy === now.getFullYear() && fm > now.getMonth() + 1);
+  })();
   const getMonthHours = (member: TeamMember): number => {
     if (monthFilter === "all") return member.monthlyHours;
     const [fy, fm] = monthFilter.split("-").map(Number);
@@ -747,7 +751,7 @@ export default function DashboardPage() {
                     Total Backlog as at end of period
                   </td>
                   <StatCells s={(() => { const icSum = (parseFloat(icRmHrs)||0)+(parseFloat(icAeHrs)||0)+(parseFloat(icFiaHrs)||0); const b = COMPANIES.reduce((acc, co) => { const s = agg(visibleCo(co.id).filter(isInAnyRow), co.id === 8 ? jobHoursAfac : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice); return { count: acc.count + s.count, hrs: acc.hrs + s.hrs, amt: acc.amt + s.amt }; }, { count: 0, hrs: 0, amt: 0 }); return { count: b.count + (obData?.jobs ?? 0) + (itData?.jobs ?? 0) + (qaData?.jobs ?? 0) + (afacProspect?.jobs ?? 0), hrs: b.hrs + (afacProspect?.hours ?? 0) + (obData?.hours ?? 0) + (itData?.hours ?? 0) + (qaData?.hours ?? 0) + icSum, amt: b.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) + (icSum * 100) }; })()} bold />
-                  {COMPANIES.map(co => <StatCells key={co.id} s={agg(visibleCo(co.id).filter(isInAnyRow), co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHoursRm : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice)} bold />)}
+                  {COMPANIES.map(co => <StatCells key={co.id} s={agg(visibleCo(co.id).filter(isInAnyRow), co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHoursRm : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice)} bold loading={!(co.id in byCompany)} />)}
                 </tr>
 
                 {/* All Companies label */}
@@ -783,7 +787,7 @@ export default function DashboardPage() {
                           const jobs = visibleCo(co.id).filter(rowFilter);
                           const coGetHrs = co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHoursRm : getHrs;
                           const s = agg(jobs, coGetHrs, co.id === 8 ? jobPriceAfac : jobPrice);
-                          return <StatCells key={co.id} s={row.key === "complete" ? zero : s} />;
+                          return <StatCells key={co.id} s={row.key === "complete" ? zero : s} loading={!(co.id in byCompany)} />;
                         })}
                       </tr>
                     </React.Fragment>
@@ -807,17 +811,20 @@ export default function DashboardPage() {
                   <td rowSpan={2} className="border border-gray-400 px-3 py-3 font-bold text-base text-center align-middle" style={{ backgroundColor: "#c4b5fd", width: 160 }}>
                     Technical Team Supply
                   </td>
-                  <td colSpan={3} className="border border-gray-400 px-3 py-1 text-center font-semibold text-xs" style={{ backgroundColor: "#d8b4fe" }}>
+                  <td colSpan={isFutureMonthFilter ? 4 : 3} className="border border-gray-400 px-3 py-1 text-center font-semibold text-xs" style={{ backgroundColor: "#d8b4fe" }}>
                     END OF PERIOD GENERATED
                   </td>
                 </tr>
                 <tr>
-                  <td colSpan={3} className="border border-gray-400 px-3 py-2 text-center font-bold text-base" style={{ backgroundColor: "#a855f7", color: "#fff" }}>
+                  <td colSpan={isFutureMonthFilter ? 4 : 3} className="border border-gray-400 px-3 py-2 text-center font-bold text-base" style={{ backgroundColor: "#a855f7", color: "#fff" }}>
                     {supplyMonthDate.toLocaleString("en-AU", { month: "long" })}
                   </td>
                 </tr>
                 <tr>
                   <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe" }}>APFS / AUDITOR</th>
+                  {isFutureMonthFilter && (
+                    <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe", width: 70 }}>{now.toLocaleString("en-AU", { month: "short" })}</th>
+                  )}
                   <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe", width: 70 }}>{supplyMonthDate.toLocaleString("en-AU", { month: "short" })}</th>
                   <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe", width: 100 }}>Total Supply Hours</th>
                   <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe", width: 190 }}>Roles</th>
@@ -842,8 +849,11 @@ export default function DashboardPage() {
                           >×</button>
                         </span>
                       </td>
+                      {isFutureMonthFilter && (
+                        <td className="border border-gray-400 px-2 py-2 text-center text-sm">{member.monthlyHours}</td>
+                      )}
                       <td className="border border-gray-400 px-2 py-2 text-center text-sm">{netHrs}</td>
-                      <td className="border border-gray-400 px-2 py-2 text-center text-sm">{getMonthHours(member)}</td>
+                      <td className="border border-gray-400 px-2 py-2 text-center text-sm">{isFutureMonthFilter ? member.monthlyHours + getMonthHours(member) : getMonthHours(member)}</td>
                       <td className="border border-gray-400 px-2 py-2 text-center text-xs">{member.role}</td>
                     </tr>
                   );
@@ -867,8 +877,11 @@ export default function DashboardPage() {
                           >×</button>
                         </span>
                       </td>
+                      {isFutureMonthFilter && (
+                        <td className="border border-gray-400 px-2 py-2 text-center text-sm">{member.monthlyHours}</td>
+                      )}
                       <td className="border border-gray-400 px-2 py-2 text-center text-sm">{netHrs}</td>
-                      <td className="border border-gray-400 px-2 py-2 text-center text-sm">{getMonthHours(member)}</td>
+                      <td className="border border-gray-400 px-2 py-2 text-center text-sm">{isFutureMonthFilter ? member.monthlyHours + getMonthHours(member) : getMonthHours(member)}</td>
                       <td className="border border-gray-400 px-2 py-2 text-center text-xs">{member.role}</td>
                     </tr>
                   );
@@ -878,6 +891,7 @@ export default function DashboardPage() {
                 {publicHolidays.length > 0 && (
                   <tr>
                     <td className="border border-gray-400 px-3 py-1 text-center text-xs font-semibold text-red-600">Public Holidays</td>
+                    {isFutureMonthFilter && <td className="border border-gray-400 px-2 py-1 text-center text-xs text-red-600"></td>}
                     <td className="border border-gray-400 px-2 py-1 text-center text-xs text-red-600">−{publicHolidays.length * 8}</td>
                     <td className="border border-gray-400 px-2 py-1 text-center text-xs text-red-600">−{publicHolidays.length * 8}</td>
                     <td className="border border-gray-400 px-2 py-1 text-xs text-red-600">
@@ -893,11 +907,19 @@ export default function DashboardPage() {
                 {/* Total row (includes extra members) */}
                 <tr className="font-bold">
                   <td className="border border-gray-400 px-3 py-2" style={{ backgroundColor: "#ede9fe" }} />
+                  {isFutureMonthFilter && (
+                    <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#ede9fe" }}>
+                      {[...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + m.monthlyHours, 0)}
+                    </td>
+                  )}
                   <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#ede9fe" }}>
                     {[...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + Math.max(0, getMonthHours(m) - remainingLeaveDays(m, supplyMonthDate) * 8), 0) - publicHolidays.length * 8}
                   </td>
                   <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#ede9fe" }}>
-                    {[...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + getMonthHours(m), 0) - publicHolidays.length * 8}
+                    {isFutureMonthFilter
+                      ? [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + m.monthlyHours + getMonthHours(m), 0) - publicHolidays.length * 8
+                      : [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + getMonthHours(m), 0) - publicHolidays.length * 8
+                    }
                   </td>
                   <td className="border border-gray-400 px-2 py-2" style={{ backgroundColor: "#ede9fe" }} />
                 </tr>
@@ -905,7 +927,7 @@ export default function DashboardPage() {
                 {/* Add Member UI */}
                 {!addingMember ? (
                   <tr>
-                    <td colSpan={4} className="border border-gray-400 px-2 py-1 text-center">
+                    <td colSpan={isFutureMonthFilter ? 5 : 4} className="border border-gray-400 px-2 py-1 text-center">
                       <button
                         onClick={() => setAddingMember(true)}
                         className="text-xs text-blue-600 hover:text-blue-800 font-semibold"
@@ -917,7 +939,7 @@ export default function DashboardPage() {
                 ) : (
                   <>
                     <tr>
-                      <td colSpan={4} className="border border-gray-400 px-3 py-2" style={{ backgroundColor: "#f8fafc" }}>
+                      <td colSpan={isFutureMonthFilter ? 5 : 4} className="border border-gray-400 px-3 py-2" style={{ backgroundColor: "#f8fafc" }}>
                         <div className="flex flex-col gap-2">
                           <div className="flex gap-2 items-center">
                             <input
@@ -1133,9 +1155,9 @@ export default function DashboardPage() {
             {(() => {
               const allMembers   = [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam];
               const supplyAudit  = allMembers.filter(m => m.role.includes("Primary APFS"))
-                .reduce((s, m) => s + getMonthHours(m), 0);
+                .reduce((s, m) => s + getMonthHours(m) + (isFutureMonthFilter ? m.monthlyHours : 0), 0);
               const supplyTech   = allMembers.filter(m => !m.role.includes("Primary APFS"))
-                .reduce((s, m) => s + getMonthHours(m), 0);
+                .reduce((s, m) => s + getMonthHours(m) + (isFutureMonthFilter ? m.monthlyHours : 0), 0);
               const demandAudit  = [1, 8, 10].reduce((sum, coId) => {
                 const getH = coId === 8 ? jobHoursAfac : coId === 1 ? jobHoursRm : hrsForJob;
                 return sum + visibleCo(coId).filter(isInAnyRow).reduce((s, j) => s + getH(j), 0);
@@ -1148,7 +1170,7 @@ export default function DashboardPage() {
               const excessDaysTech  = excessTech / 8;
               const supplyOverall   = supplyAudit + supplyTech;
               const demandOverall   = demandAudit + demandTech;
-              const varianceHours   = supplyOverall - demandOverall;
+              const varianceHours   = demandOverall - supplyOverall;
               const varianceDays    = varianceHours / 8;
               const varianceWeeks   = varianceDays / 5;
               const fmtN = (n: number) => n >= 0 ? n.toFixed(2) : `-(${Math.abs(n).toFixed(2)})`;

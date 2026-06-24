@@ -1,22 +1,38 @@
 import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import { join } from "path";
+import { gcsRead, gcsWrite } from "../../lib/gcsCache";
 
 const DATA_FILE = join(process.cwd(), "data", "afac-exclusions.json");
+const GCS_KEY   = "data-afac-exclusions.json";
+
+async function read(): Promise<string[]> {
+  // Try local file first (fast path)
+  try {
+    return JSON.parse(await fs.readFile(DATA_FILE, "utf-8")) as string[];
+  } catch {}
+  // Fall back to GCS (new container after deployment)
+  try {
+    const remote = await gcsRead(GCS_KEY);
+    if (remote) {
+      const data = JSON.parse(remote) as string[];
+      fs.writeFile(DATA_FILE, remote, "utf-8").catch(() => {});
+      return data;
+    }
+  } catch {}
+  return [];
+}
 
 export async function GET() {
-  try {
-    const data = JSON.parse(await fs.readFile(DATA_FILE, "utf-8")) as string[];
-    return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
-  } catch {
-    return NextResponse.json([], { headers: { "Cache-Control": "no-store" } });
-  }
+  return NextResponse.json(await read(), { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json() as string[];
-    await fs.writeFile(DATA_FILE, JSON.stringify(body, null, 2), "utf-8");
+    const json = JSON.stringify(body, null, 2);
+    await fs.writeFile(DATA_FILE, json, "utf-8");
+    gcsWrite(GCS_KEY, json);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });

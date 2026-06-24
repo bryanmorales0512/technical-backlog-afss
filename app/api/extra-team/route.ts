@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import { join } from "path";
 import os from "os";
+import { gcsRead, gcsWrite } from "../../lib/gcsCache";
 
 const BASE_URL = process.env.SIMPRO_BASE_URL;
 const TOKEN    = process.env.SIMPRO_TOKEN?.replace(/^﻿/, "").trim();
@@ -9,6 +10,7 @@ const hdrs     = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "applicatio
 
 const LEAVE_REFS  = new Set(["1", "2"]); // Annual Leave, Sick/Personal Leave
 const MEMBERS_FILE = join(process.cwd(), "data", "extra-team-members.json");
+const MEMBERS_GCS_KEY = "data-extra-team-members.json";
 const CACHE_FILE  = join(os.tmpdir(), "afss-extra-team-leave-cache.json");
 const CACHE_TTL   = 60 * 60_000;
 
@@ -18,14 +20,27 @@ type LeaveCache = { data: Record<number, string[]>; ts: number };
 // ── persistence ──────────────────────────────────────────────────────────────
 
 async function readMembers(): Promise<ExtraMember[]> {
+  // Try local file first (fast path)
   try {
     return JSON.parse(await fs.readFile(MEMBERS_FILE, "utf-8")) as ExtraMember[];
-  } catch { return []; }
+  } catch {}
+  // Fall back to GCS (new container after deployment)
+  try {
+    const remote = await gcsRead(MEMBERS_GCS_KEY);
+    if (remote) {
+      const data = JSON.parse(remote) as ExtraMember[];
+      fs.writeFile(MEMBERS_FILE, remote, "utf-8").catch(() => {});
+      return data;
+    }
+  } catch {}
+  return [];
 }
 
 async function writeMembers(members: ExtraMember[]): Promise<void> {
   await fs.mkdir(join(process.cwd(), "data"), { recursive: true });
-  await fs.writeFile(MEMBERS_FILE, JSON.stringify(members, null, 2), "utf-8");
+  const json = JSON.stringify(members, null, 2);
+  await fs.writeFile(MEMBERS_FILE, json, "utf-8");
+  gcsWrite(MEMBERS_GCS_KEY, json);
 }
 
 async function readLeaveCache(): Promise<LeaveCache | null> {
