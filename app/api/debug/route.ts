@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { readCacheRaw } from "../../lib/simpro";
 
+const BASE_URL = process.env.SIMPRO_BASE_URL;
+const TOKEN    = process.env.SIMPRO_TOKEN?.replace(/^﻿/, "").trim();
+const hdrs     = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+const LIST_COLS = "ID,Stage,Status,Technicians,Name";
+const CFSP_ID  = 1126;
+
 export async function GET(req: Request) {
   const url     = new URL(req.url);
   const mode    = url.searchParams.get("mode") ?? "tentative";
@@ -61,7 +67,32 @@ export async function GET(req: Request) {
       return NextResponse.json({ company, total: scheduled.length, jobs: scheduled }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    return NextResponse.json({ error: "mode must be tentative, scheduled, or techs" }, { status: 400 });
+    if (mode === "raw") {
+      // Fetch directly from SimPRO — bypasses all caching and filtering
+      const stage = url.searchParams.get("stage") ?? "Pending";
+      const r = await fetch(
+        `${BASE_URL}/api/v1.0/companies/${company}/jobs/?pageSize=10&columns=${LIST_COLS}&Stage=${stage}&page=1`,
+        { headers: hdrs, cache: "no-store" }
+      );
+      const raw = await r.json();
+      const items: Record<string, unknown>[] = Array.isArray(raw) ? raw : (raw?.Result ?? []);
+      const sample = items.slice(0, 10).map(j => ({
+        id:   j.ID,
+        name: j.Name,
+        stage: j.Stage,
+        technicians: j.Technicians,
+        techIDs: (j.Technicians as Record<string,unknown>[] | undefined)
+          ?.map(t => (t as Record<string,unknown>).ID),
+        passesFilter: (j.Technicians as Record<string,unknown>[] | undefined)
+          ?.some(t => Number((t as Record<string,unknown>).ID) === CFSP_ID) ?? false,
+      }));
+      return NextResponse.json({
+        company, stage, totalReturned: items.length, cfspId: CFSP_ID, sample,
+        passCount: sample.filter(j => j.passesFilter).length,
+      }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    return NextResponse.json({ error: "mode must be tentative, scheduled, techs, or raw" }, { status: 400 });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
