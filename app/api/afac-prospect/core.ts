@@ -16,7 +16,7 @@ export function cacheFile(filterYear?: number, filterMonth?: number) {
   const aest = new Date(Date.now() + 10 * 60 * 60 * 1000);
   const y = filterYear  ?? aest.getUTCFullYear();
   const m = String(filterMonth ?? (aest.getUTCMonth() + 1)).padStart(2, "0");
-  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-afac-prospect-v9-${y}-${m}.json`);
+  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-afac-prospect-v10-${y}-${m}.json`);
 }
 
 async function loadExclusions(): Promise<Set<string>> {
@@ -56,6 +56,61 @@ function fmt(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// Returns 5 evenly-spread weekdays across a month for quick sampling
+function sampleWeekdays(year: number, month: number): string[] {
+  const lastDay = new Date(year, month, 0).getDate();
+  const targets = [2, Math.round(lastDay * 0.25), Math.round(lastDay * 0.5), Math.round(lastDay * 0.75), lastDay - 1];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const t of targets) {
+    const d = new Date(year, month - 1, Math.max(1, Math.min(t, lastDay)));
+    while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+    if (d.getMonth() !== month - 1) continue;
+    const s = fmt(d);
+    if (!seen.has(s)) { seen.add(s); result.push(s); }
+  }
+  return result;
+}
+
+// Scans backwards from the month before baseYear/baseMonth to find the most recent
+// month where Soban had AFAC (non-REDMEN-FIRE) jobs scheduled in Company 8.
+// Uses 5 sample weekdays per month to keep API calls low.
+async function findLatestAfacMonth(baseYear: number, baseMonth: number): Promise<{ year: number; month: number }> {
+  for (let i = 1; i <= 24; i++) {
+    let m = baseMonth - i;
+    let y = baseYear;
+    while (m <= 0) { m += 12; y--; }
+
+    const samples = sampleWeekdays(y, m);
+    for (const day of samples) {
+      const raw = listOf(await simGet(`/api/v1.0/companies/8/schedules/?Date=${day}&pageSize=250`) ?? []);
+      const sobanBlocks = raw.filter(b => (b.Staff as Record<string, unknown>)?.ID === AFSS_STAFF_ID);
+      if (sobanBlocks.length === 0) { await sleep(80); continue; }
+
+      const pids = [
+        ...new Set(
+          sobanBlocks
+            .map(b => (b.Project as Record<string, unknown>)?.ProjectID)
+            .filter((id): id is string | number => id != null)
+        ),
+      ];
+      const jobs = await Promise.all(pids.map(id => simGet(`/api/v1.0/companies/8/jobs/${id}`).catch(() => null)));
+      const hasAfac = jobs.some(job => {
+        if (!job) return false;
+        const customer = String(((job as Record<string, unknown>).Customer as Record<string, unknown>)?.CompanyName ?? "").toUpperCase();
+        return !customer.includes("REDMEN FIRE");
+      });
+      if (hasAfac) {
+        await sleep(80);
+        return { year: y, month: m };
+      }
+      await sleep(80);
+    }
+  }
+  // Fallback: previous year same month
+  return { year: baseYear - 1, month: baseMonth };
+}
+
 export type AfacProspectResponse = {
   jobs: number;
   hours: number;
@@ -67,13 +122,15 @@ export type AfacProspectResponse = {
 export async function buildData(filterYear?: number, filterMonth?: number): Promise<AfacProspectResponse> {
   const exclusions = await loadExclusions();
 
-  const aest       = new Date(Date.now() + 10 * 60 * 60 * 1000);
-  const baseYear   = filterYear  ?? aest.getUTCFullYear();
-  const baseMonth  = filterMonth ?? (aest.getUTCMonth() + 1);
-  // Always scan the full previous-year month (day 1 → last day)
-  const targetYear = baseYear - 1;
-  const start = new Date(targetYear, baseMonth - 1, 1);
-  const end   = new Date(targetYear, baseMonth, 0);
+  const aest      = new Date(Date.now() + 10 * 60 * 60 * 1000);
+  const baseYear  = filterYear  ?? aest.getUTCFullYear();
+  const baseMonth = filterMonth ?? (aest.getUTCMonth() + 1);
+
+  // Auto-detect the most recent past month where Soban had AFAC jobs in SimPRO
+  const { year: targetYear, month: targetMonth } = await findLatestAfacMonth(baseYear, baseMonth);
+
+  const start    = new Date(targetYear, targetMonth - 1, 1);
+  const end      = new Date(targetYear, targetMonth, 0);
   const dateFrom = fmt(start);
   const dateTo   = fmt(end);
 
@@ -131,16 +188,13 @@ export async function buildData(filterYear?: number, filterMonth?: number): Prom
     return pid != null && afssProjectIds.has(pid as string | number);
   });
 
-  let totalRows = 0;
   let totalHours = 0;
   for (const b of afssBlocks) {
-    const subBlocks = Array.isArray(b.Blocks) ? (b.Blocks as unknown[]) : [];
-    totalRows += subBlocks.length > 0 ? subBlocks.length : 1;
     totalHours += Number(b.TotalHours ?? 0);
   }
 
   return {
-    jobs: totalRows,
+    jobs: afssProjectIds.size,
     hours: Math.round(totalHours * 100) / 100,
     dateFrom,
     dateTo,
@@ -154,6 +208,5 @@ export async function warmAfacProspect(): Promise<void> {
   try {
     await fs.writeFile(cacheFile(), json, "utf-8");
   } catch { /* ignore */ }
-  gcsWrite(`afss-afac-prospect-v9-${cacheFile().split("v9-")[1]}`, json);
+  gcsWrite(`afss-afac-prospect-v10-${cacheFile().split("v10-")[1]}`, json);
 }
-
