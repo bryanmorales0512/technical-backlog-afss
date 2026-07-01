@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import { join } from "path";
 import os from "os";
-import { gcsWrite } from "../../lib/gcsCache";
+import { gcsWrite, gcsRead } from "../../lib/gcsCache";
 
 const BASE_URL = process.env.SIMPRO_BASE_URL;
 const TOKEN    = process.env.SIMPRO_TOKEN?.replace(/^﻿/, "").trim();
@@ -328,12 +328,24 @@ export async function loadCcCache(): Promise<Map<number, string>> {
   try {
     const raw = JSON.parse(await fs.readFile(CC_CACHE_FILE, "utf-8")) as Record<string, string>;
     return new Map(Object.entries(raw).map(([k, v]) => [Number(k), v]));
-  } catch { return new Map(); }
+  } catch {
+    // Local disk missing (e.g. Cloud Run restart) — fall back to GCS
+    try {
+      const gcs = await gcsRead("afss-cc-name-cache-v5.json");
+      if (gcs) {
+        const raw = JSON.parse(gcs) as Record<string, string>;
+        return new Map(Object.entries(raw).map(([k, v]) => [Number(k), v]));
+      }
+    } catch {}
+    return new Map();
+  }
 }
 export async function saveCcCache(cache: Map<number, string>): Promise<void> {
   const obj: Record<string, string> = {};
   for (const [k, v] of cache) obj[String(k)] = v;
-  try { await fs.writeFile(CC_CACHE_FILE, JSON.stringify(obj), "utf-8"); } catch {}
+  const json = JSON.stringify(obj);
+  try { await fs.writeFile(CC_CACHE_FILE, json, "utf-8"); } catch {}
+  gcsWrite("afss-cc-name-cache-v5.json", json);
 }
 
 export async function resolveUnknownCcNames(blocks: BlockInfo[], ccCache: Map<number, string>): Promise<void> {
