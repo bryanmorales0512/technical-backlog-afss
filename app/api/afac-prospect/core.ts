@@ -16,7 +16,7 @@ export function cacheFile(filterYear?: number, filterMonth?: number) {
   const aest = new Date(Date.now() + 10 * 60 * 60 * 1000);
   const y = filterYear  ?? aest.getUTCFullYear();
   const m = String(filterMonth ?? (aest.getUTCMonth() + 1)).padStart(2, "0");
-  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-afac-prospect-v12-${y}-${m}.json`);
+  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-afac-prospect-v13-${y}-${m}.json`);
 }
 
 async function loadExclusions(): Promise<Set<string>> {
@@ -70,7 +70,6 @@ export async function buildData(filterYear?: number, filterMonth?: number): Prom
   const aest       = new Date(Date.now() + 10 * 60 * 60 * 1000);
   const baseYear   = filterYear  ?? aest.getUTCFullYear();
   const baseMonth  = filterMonth ?? (aest.getUTCMonth() + 1);
-  // Scan the same month in the previous year
   const targetYear = baseYear - 1;
   const start = new Date(targetYear, baseMonth - 1, 1);
   const end   = new Date(targetYear, baseMonth, 0);
@@ -84,7 +83,7 @@ export async function buildData(filterYear?: number, filterMonth?: number): Prom
       const day = fmt(new Date(cursor));
       if (!exclusions.has(day)) {
         const raw = listOf(await simGet(
-          `/api/v1.0/companies/8/schedules/?Date=${day}&pageSize=250&expand=CostCenter`
+          `/api/v1.0/companies/8/schedules/?Date=${day}&pageSize=250`
         ) ?? []);
         allBlocks = allBlocks.concat(raw);
       }
@@ -93,13 +92,9 @@ export async function buildData(filterYear?: number, filterMonth?: number): Prom
     cursor.setDate(cursor.getDate() + 1);
   }
 
-  const sobanBlocks = allBlocks.filter(b => {
-    if ((b.Staff as Record<string, unknown>)?.ID !== AFSS_STAFF_ID) return false;
-    const ccTop  = b.CostCenter as Record<string, unknown> | undefined;
-    const ccProj = (b.Project as Record<string, unknown>)?.CostCenter as Record<string, unknown> | undefined;
-    const ccName = String(ccTop?.Name ?? ccProj?.Name ?? "").trim().toUpperCase();
-    return ccName.includes("AFSS");
-  });
+  const sobanBlocks = allBlocks.filter(
+    b => (b.Staff as Record<string, unknown>)?.ID === AFSS_STAFF_ID
+  );
 
   const uniqueProjectIds = [
     ...new Set(
@@ -109,11 +104,15 @@ export async function buildData(filterYear?: number, filterMonth?: number): Prom
     ),
   ];
 
-  const jobDetails = await Promise.all(
-    uniqueProjectIds.map(id =>
+  // Fetch job details and job sections in parallel for each unique project
+  const [jobDetails, jobSections] = await Promise.all([
+    Promise.all(uniqueProjectIds.map(id =>
       simGet(`/api/v1.0/companies/8/jobs/${id}`).catch(() => null)
-    )
-  );
+    )),
+    Promise.all(uniqueProjectIds.map(id =>
+      simGet(`/api/v1.0/companies/8/jobs/${id}/sections/?pageSize=250&expand=CostCenter`).catch(() => null)
+    )),
+  ]);
 
   const afssProjectIds = new Set<string | number>();
   const jobTotalMap = new Map<string | number, number>();
@@ -123,11 +122,19 @@ export async function buildData(filterYear?: number, filterMonth?: number): Prom
     const customer = String(
       (job.Customer as Record<string, unknown>)?.CompanyName ?? ""
     ).toUpperCase();
-    if (!customer.includes("REDMEN FIRE")) {
-      afssProjectIds.add(id);
-      const exTax = Number((job.Total as Record<string, unknown>)?.ExTax ?? 0);
-      jobTotalMap.set(id, exTax);
-    }
+    if (customer.includes("REDMEN FIRE")) return;
+
+    // Only include jobs that have at least one section with AFSS cost centre
+    const sections = listOf(jobSections[i] ?? []);
+    const hasAfss = sections.some(s => {
+      const cc = s.CostCenter as Record<string, unknown> | undefined;
+      return String(cc?.Name ?? "").toUpperCase().includes("AFSS");
+    });
+    if (!hasAfss) return;
+
+    afssProjectIds.add(id);
+    const exTax = Number((job.Total as Record<string, unknown>)?.ExTax ?? 0);
+    jobTotalMap.set(id, exTax);
   });
 
   const afssBlocks = sobanBlocks.filter(b => {
@@ -155,5 +162,5 @@ export async function warmAfacProspect(): Promise<void> {
   try {
     await fs.writeFile(cacheFile(), json, "utf-8");
   } catch { /* ignore */ }
-  gcsWrite(`afss-afac-prospect-v12-${cacheFile().split("v12-")[1]}`, json);
+  gcsWrite(`afss-afac-prospect-v13-${cacheFile().split("v13-")[1]}`, json);
 }
