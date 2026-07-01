@@ -16,7 +16,7 @@ export function cacheFile(filterYear?: number, filterMonth?: number) {
   const aest = new Date(Date.now() + 10 * 60 * 60 * 1000);
   const y = filterYear  ?? aest.getUTCFullYear();
   const m = String(filterMonth ?? (aest.getUTCMonth() + 1)).padStart(2, "0");
-  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-afac-prospect-v14-${y}-${m}.json`);
+  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-afac-prospect-v15-${y}-${m}.json`);
 }
 
 async function loadExclusions(): Promise<Set<string>> {
@@ -149,15 +149,11 @@ export async function buildData(filterYear?: number, filterMonth?: number): Prom
     ),
   ];
 
-  // Fetch job details and job sections in parallel for each unique project
-  const [jobDetails, jobSections] = await Promise.all([
-    Promise.all(uniqueProjectIds.map(id =>
+  const jobDetails = await Promise.all(
+    uniqueProjectIds.map(id =>
       simGet(`/api/v1.0/companies/8/jobs/${id}`).catch(() => null)
-    )),
-    Promise.all(uniqueProjectIds.map(id =>
-      simGet(`/api/v1.0/companies/8/jobs/${id}/sections/?pageSize=250`).catch(() => null)
-    )),
-  ]);
+    )
+  );
 
   const afssProjectIds = new Set<string | number>();
   const jobTotalMap = new Map<string | number, number>();
@@ -167,19 +163,8 @@ export async function buildData(filterYear?: number, filterMonth?: number): Prom
     const customer = String(
       (job.Customer as Record<string, unknown>)?.CompanyName ?? ""
     ).toUpperCase();
-    if (customer.includes("REDMEN FIRE")) return;
-
-    // Only include jobs that have at least one section whose Name contains "AFSS"
-    // (SimPRO section names mirror cost centre names)
-    const sections = listOf(jobSections[i] ?? []);
-    const hasAfss = sections.some(s => {
-      const cc = s.CostCenter as Record<string, unknown> | undefined;
-      return (
-        String(cc?.Name ?? "").toUpperCase().includes("AFSS") ||
-        String(s.Name ?? "").toUpperCase().includes("AFSS")
-      );
-    });
-    if (!hasAfss) return;
+    const INTERNAL = ["REDMEN FIRE", "AFAC", "ADAIR OPERATION", "Z SAFE"];
+    if (INTERNAL.some(c => customer.includes(c))) return;
 
     afssProjectIds.add(id);
     const exTax = Number((job.Total as Record<string, unknown>)?.ExTax ?? 0);
@@ -211,5 +196,5 @@ export async function warmAfacProspect(): Promise<void> {
   try {
     await fs.writeFile(cacheFile(), json, "utf-8");
   } catch { /* ignore */ }
-  gcsWrite(`afss-afac-prospect-v14-${cacheFile().split("v14-")[1]}`, json);
+  gcsWrite(`afss-afac-prospect-v15-${cacheFile().split("v15-")[1]}`, json);
 }
