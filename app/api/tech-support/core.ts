@@ -265,9 +265,10 @@ export function isDatacomBlock(b: BlockInfo, ccCache?: Map<number, string>): boo
 }
 
 export function isAfssBlock(b: BlockInfo, ccCache?: Map<number, string>, afssIds: Set<number> = KNOWN_AFSS_CC_IDS): boolean {
+  if (afssIds.has(b.ccId)) return true;
   if (b.ccName.length > 0) return AFSS_CC_NAMES.has(b.ccName.toLowerCase());
   if (ccCache && b.ccId > 0 && ccCache.has(b.ccId)) return AFSS_CC_NAMES.has(ccCache.get(b.ccId)!.toLowerCase());
-  return afssIds.has(b.ccId);
+  return false;
 }
 
 export async function fetchAllScheduleBlocks(year: number, month: number, tentativeIds: Set<number>): Promise<BlockInfo[]> {
