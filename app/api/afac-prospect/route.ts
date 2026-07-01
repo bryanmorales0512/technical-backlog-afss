@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import { gcsWrite } from "../../lib/gcsCache";
-import { buildData, cacheFile, CACHE_TTL } from "./core";
+import { buildData, buildDebugData, cacheFile, CACHE_TTL } from "./core";
 
 export type { AfacProspectResponse } from "./core";
 
 export async function GET(req: Request) {
   const url   = new URL(req.url);
   const force = url.searchParams.get("force") === "1";
+
+  if (url.searchParams.get("debug") === "1") {
+    const yearParam  = url.searchParams.get("year");
+    const monthParam = url.searchParams.get("month");
+    const data = await buildDebugData(yearParam ? parseInt(yearParam, 10) : undefined, monthParam ? parseInt(monthParam, 10) : undefined);
+    return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
+  }
 
   const yearParam   = url.searchParams.get("year");
   const monthParam  = url.searchParams.get("month");

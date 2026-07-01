@@ -64,6 +64,51 @@ export type AfacProspectResponse = {
   costCentreFiltered: boolean;
 };
 
+export async function buildDebugData(filterYear?: number, filterMonth?: number) {
+  const exclusions = await loadExclusions();
+  const aest      = new Date(Date.now() + 10 * 60 * 60 * 1000);
+  const baseYear  = filterYear  ?? aest.getUTCFullYear();
+  const baseMonth = filterMonth ?? (aest.getUTCMonth() + 1);
+  const targetYear = baseYear - 1;
+  const start = new Date(targetYear, baseMonth - 1, 1);
+  const end   = new Date(targetYear, baseMonth, 0);
+
+  let allBlocks: Record<string, unknown>[] = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    if (cursor.getDay() !== 0 && cursor.getDay() !== 6) {
+      const day = fmt(new Date(cursor));
+      if (!exclusions.has(day)) {
+        const raw = listOf(await simGet(`/api/v1.0/companies/8/schedules/?Date=${day}&pageSize=250`) ?? []);
+        allBlocks = allBlocks.concat(raw);
+      }
+      await sleep(80);
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  const sobanBlocks = allBlocks.filter(b => (b.Staff as Record<string, unknown>)?.ID === AFSS_STAFF_ID);
+  const uniqueProjectIds = [...new Set(sobanBlocks.map(b => (b.Project as Record<string, unknown>)?.ProjectID).filter((id): id is string | number => id != null))];
+
+  const [jobDetails, jobSections] = await Promise.all([
+    Promise.all(uniqueProjectIds.map(id => simGet(`/api/v1.0/companies/8/jobs/${id}`).catch(() => null))),
+    Promise.all(uniqueProjectIds.map(id => simGet(`/api/v1.0/companies/8/jobs/${id}/sections/?pageSize=250`).catch(() => null))),
+  ]);
+
+  return {
+    period: `${fmt(start)} to ${fmt(end)}`,
+    sobanBlockCount: sobanBlocks.length,
+    uniqueProjectIds,
+    jobs: uniqueProjectIds.map((id, i) => ({
+      id,
+      customer: (jobDetails[i] as Record<string, unknown> | null)?.Customer,
+      sectionsRaw: jobSections[i],
+      sectionsCount: listOf(jobSections[i] ?? []).length,
+      sections: listOf(jobSections[i] ?? []).map(s => ({ id: s.ID, name: s.Name, CostCenter: s.CostCenter })),
+    })),
+  };
+}
+
 export async function buildData(filterYear?: number, filterMonth?: number): Promise<AfacProspectResponse> {
   const exclusions = await loadExclusions();
 
