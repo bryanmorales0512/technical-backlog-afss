@@ -16,7 +16,7 @@ export function cacheFile(filterYear?: number, filterMonth?: number) {
   const aest = new Date(Date.now() + 10 * 60 * 60 * 1000);
   const y = filterYear  ?? aest.getUTCFullYear();
   const m = String(filterMonth ?? (aest.getUTCMonth() + 1)).padStart(2, "0");
-  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-afac-prospect-v11-${y}-${m}.json`);
+  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-afac-prospect-v12-${y}-${m}.json`);
 }
 
 async function loadExclusions(): Promise<Set<string>> {
@@ -84,7 +84,7 @@ export async function buildData(filterYear?: number, filterMonth?: number): Prom
       const day = fmt(new Date(cursor));
       if (!exclusions.has(day)) {
         const raw = listOf(await simGet(
-          `/api/v1.0/companies/8/schedules/?Date=${day}&pageSize=250`
+          `/api/v1.0/companies/8/schedules/?Date=${day}&pageSize=250&expand=CostCenter`
         ) ?? []);
         allBlocks = allBlocks.concat(raw);
       }
@@ -93,9 +93,13 @@ export async function buildData(filterYear?: number, filterMonth?: number): Prom
     cursor.setDate(cursor.getDate() + 1);
   }
 
-  const sobanBlocks = allBlocks.filter(
-    b => (b.Staff as Record<string, unknown>)?.ID === AFSS_STAFF_ID
-  );
+  const sobanBlocks = allBlocks.filter(b => {
+    if ((b.Staff as Record<string, unknown>)?.ID !== AFSS_STAFF_ID) return false;
+    const ccTop  = b.CostCenter as Record<string, unknown> | undefined;
+    const ccProj = (b.Project as Record<string, unknown>)?.CostCenter as Record<string, unknown> | undefined;
+    const ccName = String(ccTop?.Name ?? ccProj?.Name ?? "").trim().toUpperCase();
+    return ccName.includes("AFSS");
+  });
 
   const uniqueProjectIds = [
     ...new Set(
@@ -151,5 +155,5 @@ export async function warmAfacProspect(): Promise<void> {
   try {
     await fs.writeFile(cacheFile(), json, "utf-8");
   } catch { /* ignore */ }
-  gcsWrite(`afss-afac-prospect-v11-${cacheFile().split("v11-")[1]}`, json);
+  gcsWrite(`afss-afac-prospect-v12-${cacheFile().split("v12-")[1]}`, json);
 }
