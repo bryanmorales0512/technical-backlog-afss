@@ -17,6 +17,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "AFSS Backlog",
   description: "AFSS job backlog tracker",
+  icons: {
+    icon: '/logo-fire-audits.png',
+  },
 };
 
 export default function RootLayout({
