@@ -190,6 +190,20 @@ export async function buildData(filterYear?: number, filterMonth?: number): Prom
   };
 }
 
+// Deletes all cached month files so the next load (forced or not) recomputes
+// with the current exclusions instead of serving stale pre-exclusion numbers.
+export async function clearCache(): Promise<void> {
+  const dir = process.env.CACHE_DIR ?? os.tmpdir();
+  try {
+    const files = await fs.readdir(dir);
+    await Promise.all(
+      files
+        .filter(f => f.startsWith("afss-afac-prospect-v15-"))
+        .map(f => fs.unlink(join(dir, f)).catch(() => {})),
+    );
+  } catch { /* no cache dir yet — nothing to clear */ }
+}
+
 export async function warmAfacProspect(): Promise<void> {
   const data = await buildData();
   const json = JSON.stringify({ data, ts: Date.now() });

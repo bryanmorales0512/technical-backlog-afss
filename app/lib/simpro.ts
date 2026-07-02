@@ -12,7 +12,7 @@ const hdrs = {
   "Content-Type": "application/json",
 };
 
-export const CACHE_TTL = 60 * 60_000; // 1 hour
+export const CACHE_TTL = 5 * 60_000; // 5 minutes — near-live auto-sync with headroom for SimPRO rate limits
 
 // No warmup gate — requests proceed immediately, auto-retry handles cold caches.
 
@@ -165,12 +165,20 @@ export async function fetchCFSPJobs(company: number, stage: string): Promise<Rec
 
 export async function fetchAndCache(company: number, stage: string): Promise<Record<string, unknown>[]> {
   const cfspJobs = await fetchCFSPJobs(company, stage);
+  const existing = await readCacheRaw(company, stage);
+
   if (cfspJobs.length === 0) {
     // Don't overwrite a good cache with an empty result — may be a transient API glitch.
-    const existing = await readCacheRaw(company, stage);
     if (existing && existing.data.length > 0) return existing.data;
     await writeCache(company, stage, []);
     return [];
+  }
+
+  // Don't overwrite a good cache with a suspiciously smaller result either — SimPRO
+  // rate-limiting or a dropped page mid-fetch can silently truncate the job list
+  // without throwing. Treat a >50% drop as an unreliable glitch and retry next cycle.
+  if (existing && existing.data.length >= 3 && cfspJobs.length < existing.data.length * 0.5) {
+    return existing.data;
   }
 
   const jobIds = cfspJobs.map((j) => j.ID);

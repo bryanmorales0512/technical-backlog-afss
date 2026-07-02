@@ -480,9 +480,8 @@ export default function DashboardPage() {
     loadIntercompany(); // eslint-disable-line react-hooks/exhaustive-deps
     loadAfacExclusions(); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Load from cache immediately (fast). The server will rebuild in the background
-    // if the cache is stale, so the next load gets fresh data automatically.
-    loadTechSupport(false); // eslint-disable-line react-hooks/exhaustive-deps
+    // Always fetch live from SimPRO on page load so the dashboard never shows stale data.
+    loadTechSupport(true); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Re-fetch shared data when this tab becomes visible so changes made in
     // the other dashboard are reflected immediately without a manual refresh.
@@ -491,7 +490,7 @@ export default function DashboardPage() {
         loadIntercompany(); // eslint-disable-line react-hooks/exhaustive-deps
         loadAfacExclusions(); // eslint-disable-line react-hooks/exhaustive-deps
         loadAfacProspect(false, monthFilterRef.current); // eslint-disable-line react-hooks/exhaustive-deps
-        loadTechSupport(false, monthFilterRef.current); // eslint-disable-line react-hooks/exhaustive-deps
+        loadTechSupport(true, monthFilterRef.current); // eslint-disable-line react-hooks/exhaustive-deps
       }
     }
     document.addEventListener("visibilitychange", onVisible);
@@ -542,7 +541,7 @@ export default function DashboardPage() {
       setQaData(qa ? JSON.parse(qa) : null);
     } catch { setObData(null); setItData(null); setQaData(null); }
     setAfacProspect(null);
-    loadTechSupport(false, monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
+    loadTechSupport(true, monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
     loadFilterPublicHolidays(monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
     loadAfacProspect(false, monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
   }, [monthFilter]);

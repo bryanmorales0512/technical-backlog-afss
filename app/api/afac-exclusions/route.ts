@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import { join } from "path";
 import { gcsRead, gcsWrite } from "../../lib/gcsCache";
+import { clearCache as clearAfacProspectCache } from "../afac-prospect/core";
 
 const DATA_FILE = join(process.cwd(), "data", "afac-exclusions.json");
 const GCS_KEY   = "data-afac-exclusions.json";
@@ -33,6 +34,7 @@ export async function POST(req: Request) {
     const json = JSON.stringify(body, null, 2);
     await fs.writeFile(DATA_FILE, json, "utf-8");
     gcsWrite(GCS_KEY, json);
+    await clearAfacProspectCache();
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });

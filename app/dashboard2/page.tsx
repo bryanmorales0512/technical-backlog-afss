@@ -293,7 +293,10 @@ export default function Dashboard2Page() {
 
   useEffect(() => {
     load(false).then(() => load(true, true)); // eslint-disable-line react-hooks/exhaustive-deps
-    const t = setInterval(() => { load(true, true); loadAfacProspect(true, monthFilterRef.current); loadTechSupport(true, monthFilterRef.current); }, 3_600_000);
+    // Poll every 90s without forcing — the shortened CACHE_TTL (see app/lib/simpro.ts)
+    // makes the server refresh from SimPRO in the background once it goes stale, so
+    // frequent unforced polls pick up near-live data without hammering SimPRO's API.
+    const t = setInterval(() => { load(false, true); loadAfacProspect(false, monthFilterRef.current); loadTechSupport(false, monthFilterRef.current); }, 90_000);
     const tRefresh = setTimeout(() => loadTechSupport(false, monthFilterRef.current), 90_000); // eslint-disable-line react-hooks/exhaustive-deps
     return () => { clearInterval(t); clearTimeout(tRefresh); if (partialTimerRef.current) clearTimeout(partialTimerRef.current); };
   }, []); // intentional: load is stable, we only want this to run once
@@ -486,9 +489,8 @@ export default function Dashboard2Page() {
     loadIntercompany(); // eslint-disable-line react-hooks/exhaustive-deps
     loadAfacExclusions(); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Load from cache immediately (fast). The server will rebuild in the background
-    // if the cache is stale, so the next load gets fresh data automatically.
-    loadTechSupport(false); // eslint-disable-line react-hooks/exhaustive-deps
+    // Always fetch live from SimPRO on page load so the dashboard never shows stale data.
+    loadTechSupport(true); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Re-fetch shared data when this tab becomes visible so changes made in
     // the other dashboard are reflected immediately without a manual refresh.
@@ -497,7 +499,7 @@ export default function Dashboard2Page() {
         loadIntercompany(); // eslint-disable-line react-hooks/exhaustive-deps
         loadAfacExclusions(); // eslint-disable-line react-hooks/exhaustive-deps
         loadAfacProspect(false, monthFilterRef.current); // eslint-disable-line react-hooks/exhaustive-deps
-        loadTechSupport(false, monthFilterRef.current); // eslint-disable-line react-hooks/exhaustive-deps
+        loadTechSupport(true, monthFilterRef.current); // eslint-disable-line react-hooks/exhaustive-deps
       }
     }
     document.addEventListener("visibilitychange", onVisible);
@@ -550,7 +552,7 @@ export default function Dashboard2Page() {
       setQaData(qa ? JSON.parse(qa) : null);
     } catch { setObData(null); setItData(null); setQaData(null); }
     setAfacProspect(null);
-    loadTechSupport(false, monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
+    loadTechSupport(true, monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
     loadFilterPublicHolidays(monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
     loadAfacProspect(false, monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
   }, [monthFilter]);
@@ -1144,17 +1146,6 @@ export default function Dashboard2Page() {
                   <td className="border border-gray-400 px-2 py-2 text-center text-sm">{qaData ? qaData.jobs : "—"}</td>
                   <td className="border border-gray-400 px-2 py-2 text-center text-sm">{qaData ? qaData.hours.toFixed(2) : "—"}</td>
                   <td className="border border-gray-400 px-2 py-2 text-center text-sm">{qaData ? fmtAmt(qaData.amount) : "—"}</td>
-                </tr>
-                <tr className="font-bold" style={{ backgroundColor: "#ede9fe" }}>
-                  <td className="border border-gray-400 px-2 py-2 text-center">{obData ? obData.jobs : "—"}</td>
-                  <td className="border border-gray-400 px-2 py-2 text-center">{obData ? obData.hours.toFixed(2) : "—"}</td>
-                  <td className="border border-gray-400 px-2 py-2 text-center">{obData ? fmtAmt(obData.amount) : "—"}</td>
-                  <td className="border border-gray-400 px-2 py-2 text-center">{itData ? itData.jobs : "—"}</td>
-                  <td className="border border-gray-400 px-2 py-2 text-center">{itData ? itData.hours.toFixed(2) : "—"}</td>
-                  <td className="border border-gray-400 px-2 py-2 text-center">{itData ? fmtAmt(itData.amount) : "—"}</td>
-                  <td className="border border-gray-400 px-2 py-2 text-center">{qaData ? qaData.jobs : "—"}</td>
-                  <td className="border border-gray-400 px-2 py-2 text-center">{qaData ? qaData.hours.toFixed(2) : "—"}</td>
-                  <td className="border border-gray-400 px-2 py-2 text-center">{qaData ? fmtAmt(qaData.amount) : "—"}</td>
                 </tr>
               </tbody>
             </table>
