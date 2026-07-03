@@ -20,11 +20,8 @@ type LeaveCache = { data: Record<number, string[]>; ts: number };
 // ── persistence ──────────────────────────────────────────────────────────────
 
 async function readMembers(): Promise<ExtraMember[]> {
-  // Try local file first (fast path)
-  try {
-    return JSON.parse(await fs.readFile(MEMBERS_FILE, "utf-8")) as ExtraMember[];
-  } catch {}
-  // Fall back to GCS (new container after deployment)
+  // GCS is the source of truth — a stale copy of MEMBERS_FILE is baked into
+  // every container image, so it must never shadow saved edits.
   try {
     const remote = await gcsRead(MEMBERS_GCS_KEY);
     if (remote) {
@@ -33,6 +30,10 @@ async function readMembers(): Promise<ExtraMember[]> {
       return data;
     }
   } catch {}
+  // Fall back to local file (dev without GCS_BUCKET, or GCS outage)
+  try {
+    return JSON.parse(await fs.readFile(MEMBERS_FILE, "utf-8")) as ExtraMember[];
+  } catch {}
   return [];
 }
 
@@ -40,7 +41,7 @@ async function writeMembers(members: ExtraMember[]): Promise<void> {
   await fs.mkdir(join(process.cwd(), "data"), { recursive: true });
   const json = JSON.stringify(members, null, 2);
   await fs.writeFile(MEMBERS_FILE, json, "utf-8");
-  gcsWrite(MEMBERS_GCS_KEY, json);
+  await gcsWrite(MEMBERS_GCS_KEY, json);
 }
 
 async function readLeaveCache(): Promise<LeaveCache | null> {

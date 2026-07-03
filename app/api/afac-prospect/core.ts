@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import { join } from "path";
 import os from "os";
-import { gcsWrite } from "../../lib/gcsCache";
+import { gcsRead, gcsWrite } from "../../lib/gcsCache";
 
 const BASE_URL = process.env.SIMPRO_BASE_URL;
 const TOKEN    = process.env.SIMPRO_TOKEN?.replace(/^﻿/, "").trim();
@@ -20,6 +20,12 @@ export function cacheFile(filterYear?: number, filterMonth?: number) {
 }
 
 async function loadExclusions(): Promise<Set<string>> {
+  // GCS is the source of truth — a stale copy of EXCLUSIONS_FILE is baked into
+  // every container image, so it must never shadow saved edits.
+  try {
+    const remote = await gcsRead("data-afac-exclusions.json");
+    if (remote) return new Set(JSON.parse(remote) as string[]);
+  } catch {}
   try {
     const dates = JSON.parse(await fs.readFile(EXCLUSIONS_FILE, "utf-8")) as string[];
     return new Set(dates);

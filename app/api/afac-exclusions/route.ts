@@ -8,11 +8,8 @@ const DATA_FILE = join(process.cwd(), "data", "afac-exclusions.json");
 const GCS_KEY   = "data-afac-exclusions.json";
 
 async function read(): Promise<string[]> {
-  // Try local file first (fast path)
-  try {
-    return JSON.parse(await fs.readFile(DATA_FILE, "utf-8")) as string[];
-  } catch {}
-  // Fall back to GCS (new container after deployment)
+  // GCS is the source of truth — a stale copy of DATA_FILE is baked into every
+  // container image, so it must never shadow saved edits.
   try {
     const remote = await gcsRead(GCS_KEY);
     if (remote) {
@@ -20,6 +17,10 @@ async function read(): Promise<string[]> {
       fs.writeFile(DATA_FILE, remote, "utf-8").catch(() => {});
       return data;
     }
+  } catch {}
+  // Fall back to local file (dev without GCS_BUCKET, or GCS outage)
+  try {
+    return JSON.parse(await fs.readFile(DATA_FILE, "utf-8")) as string[];
   } catch {}
   return [];
 }
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
     const body = await req.json() as string[];
     const json = JSON.stringify(body, null, 2);
     await fs.writeFile(DATA_FILE, json, "utf-8");
-    gcsWrite(GCS_KEY, json);
+    await gcsWrite(GCS_KEY, json);
     await clearAfacProspectCache();
     return NextResponse.json({ ok: true });
   } catch (err) {

@@ -37,6 +37,6 @@ export async function GET(req: Request) {
   }
   const json = JSON.stringify({ data, ts: Date.now() });
   fs.writeFile(cacheFile(filterYear, filterMonth), json, "utf-8").catch(() => {});
-  gcsWrite(`afss-afac-prospect-v9-${cacheFile(filterYear, filterMonth).split("v9-")[1]}`, json);
+  gcsWrite(`afss-afac-prospect-v15-${cacheFile(filterYear, filterMonth).split("v15-")[1]}`, json);
   return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
 }

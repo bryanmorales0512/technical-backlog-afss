@@ -9,11 +9,8 @@ const GCS_KEY   = "data-intercompany.json";
 type IcData = { hrs: string; rmHrs: string; aeHrs: string; fiaHrs: string };
 
 async function read(): Promise<IcData> {
-  // Try local file first (fast path)
-  try {
-    return JSON.parse(await fs.readFile(DATA_FILE, "utf-8")) as IcData;
-  } catch {}
-  // Fall back to GCS (new container after deployment)
+  // GCS is the source of truth — a stale copy of DATA_FILE is baked into every
+  // container image, so it must never shadow saved edits.
   try {
     const remote = await gcsRead(GCS_KEY);
     if (remote) {
@@ -21,6 +18,10 @@ async function read(): Promise<IcData> {
       fs.writeFile(DATA_FILE, remote, "utf-8").catch(() => {});
       return data;
     }
+  } catch {}
+  // Fall back to local file (dev without GCS_BUCKET, or GCS outage)
+  try {
+    return JSON.parse(await fs.readFile(DATA_FILE, "utf-8")) as IcData;
   } catch {}
   return { hrs: "", rmHrs: "", aeHrs: "", fiaHrs: "" };
 }
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
     const body = await req.json() as IcData;
     const json = JSON.stringify(body, null, 2);
     await fs.writeFile(DATA_FILE, json, "utf-8");
-    gcsWrite(GCS_KEY, json);
+    await gcsWrite(GCS_KEY, json);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
