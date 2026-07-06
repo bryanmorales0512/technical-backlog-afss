@@ -9,7 +9,7 @@ import {
   getTentativeStaffIds, fetchAllScheduleBlocks, fetchJobDetailsMap,
   loadCcCache, saveCcCache, resolveUnknownCcNames,
   calcOtherBillable, calcInvestedTime,
-  listOf, simGet, isAfssBlock,
+  listOf, simGet, isAfssBlock, jobEstHours,
 } from "./core";
 import type { TechSupportResponse } from "./core";
 
@@ -65,8 +65,9 @@ export async function GET(req: Request) {
     await saveCcCache(ccCache);
     const jobMap     = await fetchJobDetailsMap(jobIds);
     const jobCcNames = ccCache;
-    const ob: object[] = [];
-    const it: object[] = [];
+    type DebugRow = { jobId: string; date: string; staffId: number; hours: number; estHrs: number; ccName: string; ccId: number; customer: string; stage: string };
+    const ob: DebugRow[] = [];
+    const it: DebugRow[] = [];
     // Dropped tracking for pipeline debug
     const droppedNotAfss:  object[] = [];
     const droppedNoJob:    object[] = [];
@@ -88,11 +89,24 @@ export async function GET(req: Request) {
         continue;
       }
       const customer = String((job.Customer as Record<string, unknown>)?.CompanyName ?? "");
-      const row = { jobId: b.jobId, date: b.date, staffId: b.staffId, hours: b.hours, ccName: resolvedName, ccId: b.ccId, customer, stage };
+      const row = { jobId: b.jobId, date: b.date, staffId: b.staffId, hours: b.hours, estHrs: jobEstHours(job), ccName: resolvedName, ccId: b.ccId, customer, stage };
       const isInternal = ["REDMEN FIRE", "AFAC", "ADAIR OPERATION", "Z SAFE"].some(c => customer.toUpperCase().includes(c));
       if (isInternal) it.push(row); else ob.push(row);
     }
-    const result: Record<string, unknown> = { obCount: ob.length, itCount: it.length, total: ob.length + it.length, ob, it };
+    // Card figures: jobs counted once each, hours = scheduled block hours.
+    // estHrs (SimPRO LaborHours.Estimate) included for reconciliation.
+    const uniq = (rows: DebugRow[]) => {
+      const est = new Map<string, number>();
+      let sched = 0;
+      for (const r of rows) { sched += r.hours; if (!est.has(r.jobId)) est.set(r.jobId, r.estHrs); }
+      const estSum = [...est.values()].reduce((s, h) => s + h, 0);
+      return { jobs: est.size, schedHrs: Math.round(sched * 100) / 100, estHrs: Math.round(estSum * 100) / 100 };
+    };
+    const result: Record<string, unknown> = {
+      obBlockCount: ob.length, itBlockCount: it.length, totalBlocks: ob.length + it.length,
+      obUnique: uniq(ob), itUnique: uniq(it),
+      ob, it,
+    };
     if (url.searchParams.get("debug") === "pipeline") {
       result.totalBlocksFetched = blockList.length;
       result.droppedNotAfss  = droppedNotAfss;

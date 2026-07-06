@@ -95,7 +95,7 @@ export function scheduleCcIdRefresh(): void {
 
 export function obItCacheFile(year: number, month: number, nodc = false) {
   const tag = nodc ? "-nodc" : "";
-  return join(CACHE_DIR, `afss-tech-support-v110${tag}-${year}-${String(month).padStart(2, "0")}.json`);
+  return join(CACHE_DIR, `afss-tech-support-v111${tag}-${year}-${String(month).padStart(2, "0")}.json`);
 }
 export async function readObItCache(year: number, month: number, nodc = false): Promise<{ data: { otherBillable: TechSupportStats; investedTime: TechSupportStats }; ts: number } | null> {
   try { return JSON.parse(await fs.readFile(obItCacheFile(year, month, nodc), "utf-8")); } catch { return null; }
@@ -104,7 +104,7 @@ export async function writeObItCache(year: number, month: number, data: { otherB
   const tag = nodc ? "-nodc" : "";
   const json = JSON.stringify({ data, ts: Date.now() });
   fs.writeFile(obItCacheFile(year, month, nodc), json, "utf-8").catch(() => {});
-  gcsWrite(`afss-tech-support-v110${tag}-${year}-${String(month).padStart(2, "0")}.json`, json);
+  gcsWrite(`afss-tech-support-v111${tag}-${year}-${String(month).padStart(2, "0")}.json`, json);
 }
 
 export function qaCacheFile() { return join(CACHE_DIR, "afss-qa-v1.json"); }
@@ -310,7 +310,7 @@ export async function fetchJobDetailsMap(jobIds: string[]): Promise<Map<string, 
   for (let i = 0; i < jobIds.length; i += BATCH) {
     const batch = jobIds.slice(i, i + BATCH);
     const results = await Promise.all(
-      batch.map(id => simGet(`/api/v1.0/companies/1/jobs/${id}?columns=ID,Stage,Customer`).catch(() => null))
+      batch.map(id => simGet(`/api/v1.0/companies/1/jobs/${id}?columns=ID,Stage,Customer,Totals`).catch(() => null))
     );
     for (let j = 0; j < batch.length; j++) {
       const raw = results[j];
@@ -393,31 +393,40 @@ function isInternalClient(job: Record<string, unknown>): boolean {
   return INTERNAL_CLIENTS.some(ex => name.includes(ex));
 }
 
+export function jobEstHours(job: Record<string, unknown>): number {
+  const totals = job.Totals as Record<string, unknown> | undefined;
+  const res    = totals?.ResourcesCost as Record<string, unknown> | undefined;
+  const lab    = res?.LaborHours as Record<string, unknown> | undefined;
+  const est    = lab?.Estimate != null ? Number(lab.Estimate) : 0;
+  return Number.isFinite(est) && est > 0 ? est : 0;
+}
+
+// Hours are scheduled block hours (SimPRO's report basis); jobs are counted
+// once per unique job so the "# of Jobs" column matches SimPRO instead of
+// re-counting a job for every day it is scheduled.
 export function calcOtherBillable(blockList: BlockInfo[], jobMap: Map<string, Record<string, unknown>>, ccCache: Map<number, string>, excludeDatacom = false, afssIds: Set<number> = KNOWN_AFSS_CC_IDS): TechSupportStats {
   const stat: TechSupportStats = { jobs: 0, hours: 0, amount: 0 };
+  const counted = new Set<string>();
   for (const b of blockList) {
     if (!isAfssBlock(b, ccCache, afssIds)) continue;
     if (excludeDatacom && isDatacomBlock(b, ccCache)) continue;
     const job = jobMap.get(b.jobId);
     // If job details failed to load, include as OB (external, pending assumption)
-    if (!job) {
-      stat.jobs++;
-      stat.hours  = Math.round((stat.hours  + b.hours)        * 100) / 100;
-      stat.amount = Math.round((stat.amount + b.hours * RATE)  * 100) / 100;
-      continue;
+    if (job) {
+      const stage = String(job.Stage ?? "").toLowerCase();
+      if (stage !== "pending" && stage !== "progress") continue;
+      if (isInternalClient(job)) continue;
     }
-    const stage = String(job.Stage ?? "").toLowerCase();
-    if (stage !== "pending" && stage !== "progress") continue;
-    if (isInternalClient(job)) continue;
-    stat.jobs++;
+    if (!counted.has(b.jobId)) { counted.add(b.jobId); stat.jobs++; }
     stat.hours  = Math.round((stat.hours  + b.hours)        * 100) / 100;
-    stat.amount = Math.round((stat.amount + b.hours * RATE)  * 100) / 100;
+    stat.amount = Math.round((stat.amount + b.hours * RATE) * 100) / 100;
   }
   return stat;
 }
 
 export function calcInvestedTime(blockList: BlockInfo[], jobMap: Map<string, Record<string, unknown>>, ccCache: Map<number, string>, excludeDatacom = false, afssIds: Set<number> = KNOWN_AFSS_CC_IDS): TechSupportStats {
   const stat: TechSupportStats = { jobs: 0, hours: 0, amount: 0 };
+  const counted = new Set<string>();
   for (const b of blockList) {
     if (!isAfssBlock(b, ccCache, afssIds)) continue;
     if (excludeDatacom && isDatacomBlock(b, ccCache)) continue;
@@ -426,9 +435,9 @@ export function calcInvestedTime(blockList: BlockInfo[], jobMap: Map<string, Rec
     const stage = String(job.Stage ?? "").toLowerCase();
     if (stage !== "pending" && stage !== "progress") continue;
     if (!isInternalClient(job)) continue;
-    stat.jobs++;
+    if (!counted.has(b.jobId)) { counted.add(b.jobId); stat.jobs++; }
     stat.hours  = Math.round((stat.hours  + b.hours)        * 100) / 100;
-    stat.amount = Math.round((stat.amount + b.hours * RATE)  * 100) / 100;
+    stat.amount = Math.round((stat.amount + b.hours * RATE) * 100) / 100;
   }
   return stat;
 }
@@ -556,6 +565,10 @@ async function buildObIt(year: number, month: number): Promise<{ regular: { othe
   if (isFuture) {
     let curReg  = await readObItCache(todayYear, todayMonth, false);
     let curNodc = await readObItCache(todayYear, todayMonth, true);
+    // A stale current-month cache would bake already-past days into the
+    // future-month total — treat it the same as a missing one.
+    if (curReg  && Date.now() - curReg.ts  > OB_IT_CACHE_TTL) curReg  = null;
+    if (curNodc && Date.now() - curNodc.ts > OB_IT_CACHE_TTL) curNodc = null;
     if (!curReg || !curNodc) {
       try {
         const curBuilt = await buildObItDeduped(todayYear, todayMonth);
