@@ -59,8 +59,8 @@ export async function writeCache(
   gcsWrite(GCS_KEY(company, stage), json); // persist to GCS for next deployment
 }
 
-// Warmup path: read from GCS to skip SimPRO fetch when cache is already fresh.
-// Only called during warmAll, never during request handling.
+// Read from GCS and mirror to the local file. Called during warmAll, and from
+// fetchAndCache's safety guards (slow path only) when the local cache is empty.
 async function readCacheFromGcs(company: number, stage: string): Promise<CacheEntry | null> {
   const remote = await gcsRead(GCS_KEY(company, stage));
   if (!remote) return null;
@@ -74,7 +74,8 @@ async function readCacheFromGcs(company: number, stage: string): Promise<CacheEn
 
 const LIST_COLS = [
   "ID", "Stage", "Status", "Technicians", "Customer", "Site",
-  "Tags", "Name", "DateIssued", "DueDate", "Total",
+  "Tags", "Name", "DateIssued", "DueDate", "Total", "Totals",
+  "Salesperson", "Type",
 ].join(",");
 
 function sleep(ms: number) {
@@ -109,29 +110,25 @@ export function list(data: unknown): Record<string, unknown>[] {
   return [];
 }
 
-function unwrap(data: unknown): Record<string, unknown> {
-  if (!data || typeof data !== "object") return {};
-  const d = data as Record<string, unknown>;
-  if (d.Result && typeof d.Result === "object" && !Array.isArray(d.Result)) {
-    return d.Result as Record<string, unknown>;
-  }
-  return d;
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
 }
 
-async function pooledGet(
-  paths: string[],
-  concurrency = 4,
-): Promise<(Record<string, unknown> | null)[]> {
-  const results: (Record<string, unknown> | null)[] = new Array(paths.length).fill(null);
-  let next = 0;
-  async function worker() {
-    while (next < paths.length) {
-      const i = next++;
-      results[i] = await simGet(paths[i]).catch(() => null) as Record<string, unknown> | null;
-    }
+// Paginate a filtered list endpoint. Errors return what was collected so far —
+// a partial enrichment map only degrades individual fields, never drops jobs.
+async function listAllPages(pathBase: string): Promise<Record<string, unknown>[]> {
+  let all: Record<string, unknown>[] = [];
+  for (let page = 1; page <= 10; page++) {
+    let items: Record<string, unknown>[];
+    try {
+      items = list(await simGet(`${pathBase}&page=${page}`));
+    } catch { break; }
+    all = all.concat(items);
+    if (items.length < 250) break;
   }
-  await Promise.all(Array.from({ length: Math.min(concurrency, paths.length) }, worker));
-  return results;
+  return all;
 }
 
 export async function fetchCFSPJobs(company: number, stage: string): Promise<Record<string, unknown>[]> {
@@ -165,7 +162,14 @@ export async function fetchCFSPJobs(company: number, stage: string): Promise<Rec
 
 export async function fetchAndCache(company: number, stage: string): Promise<Record<string, unknown>[]> {
   const cfspJobs = await fetchCFSPJobs(company, stage);
-  const existing = await readCacheRaw(company, stage);
+
+  // A fresh container has no local cache even when GCS holds good data — check
+  // GCS before trusting an empty/shrunken result, so a transient SimPRO glitch
+  // can't poison the persisted cache with [] and wipe the dashboard.
+  let existing = await readCacheRaw(company, stage);
+  if (!existing || existing.data.length === 0) {
+    existing = await readCacheFromGcs(company, stage);
+  }
 
   if (cfspJobs.length === 0) {
     // Don't overwrite a good cache with an empty result — may be a transient API glitch.
@@ -181,98 +185,86 @@ export async function fetchAndCache(company: number, stage: string): Promise<Rec
     return existing.data;
   }
 
-  const jobIds = cfspJobs.map((j) => j.ID);
+  const jobIds = cfspJobs.map((j) => j.ID as string | number);
   const siteIds = [...new Set(
     cfspJobs.map((j) => (j.Site as Record<string, unknown>)?.ID).filter(Boolean),
-  )];
+  )] as (string | number)[];
 
-  type CustomerRef = { id: string | number; type: string };
   const seenCustIds = new Set<string | number>();
-  const customerRefs: CustomerRef[] = [];
+  const companyCustIds: (string | number)[] = [];
+  const individualCustIds: (string | number)[] = [];
   for (const j of cfspJobs) {
     const cust = j.Customer as Record<string, unknown> | null;
     const id   = cust?.ID as string | number | null | undefined;
-    const type = (cust?.Type as string) || "Company";
-    if (id != null && !seenCustIds.has(id)) {
-      seenCustIds.add(id);
-      customerRefs.push({ id, type });
-    }
+    if (id == null || seenCustIds.has(id)) continue;
+    seenCustIds.add(id);
+    ((cust?.Type as string) === "Individual" ? individualCustIds : companyCustIds).push(id);
   }
-  const customerPaths = customerRefs.map(({ id, type }) => {
-    const segment = type === "Individual" ? "individuals" : "companies";
-    return `/api/v1.0/companies/${company}/customers/${segment}/${id}`;
-  });
 
-  // Concurrency 4 per pool × 4 pools = max 16 concurrent SimPRO calls.
-  // Previously 10×4 = 40 concurrent — caused 429s on Cloud Run during warmup.
-  const [detailResults, siteResults, schedResults, customerResults] = await Promise.all([
-    pooledGet(jobIds.map((id) => `/api/v1.0/companies/${company}/jobs/${id}`), 4),
-    pooledGet(siteIds.map((id) => `/api/v1.0/companies/${company}/sites/${id}`), 4),
-    pooledGet(jobIds.map((id) => `/api/v1.0/companies/${company}/schedules/?JobID=${id}&pageSize=250`), 4),
-    pooledGet(customerPaths, 4),
-  ]);
-
-  const detailMap: Record<string | number, Record<string, unknown>> = {};
-  jobIds.forEach((id, i) => {
-    const raw = detailResults[i];
-    if (raw) detailMap[id as string | number] = unwrap(raw);
-  });
-
-  const siteMap: Record<string | number, Record<string, unknown>> = {};
-  siteIds.forEach((id, i) => {
-    const raw = siteResults[i];
-    if (raw) siteMap[id as string | number] = unwrap(raw);
-  });
-
-  const customerMap: Record<string | number, Record<string, unknown>> = {};
-  customerRefs.forEach(({ id }, i) => {
-    const raw = customerResults[i];
-    if (raw) customerMap[id] = unwrap(raw);
-  });
-
+  // Bulk enrichment via filtered list endpoints (ID=in / JobID=in) — a handful
+  // of calls instead of one per job. The old per-job fetches (~3 calls × every
+  // job, every sync) saturated SimPRO's rate limit on Cloud Run, so the big
+  // company/stage combos never finished syncing and the dashboard showed 0.
   type SchedInfo = { date: string | null; hours: number };
   const schedMap: Record<string | number, SchedInfo> = {};
-  jobIds.forEach((id, i) => {
-    const raw = schedResults[i];
-    if (!raw) { schedMap[id as string | number] = { date: null, hours: 0 }; return; }
-    let blocks = list(raw);
-    if (blocks.length === 0) {
-      const u = unwrap(raw);
-      if (u.Date) blocks = [u];
-    }
-    const dates = blocks
-      .map((b) => b.Date as string | undefined)
-      .filter((d): d is string => typeof d === "string" && d.length > 0);
-    const hours = blocks.reduce((sum, b) => {
-      const dur = b.TotalHours ?? b.Duration ?? b.Hours ?? b.PlannedHours;
-      return sum + (dur != null ? Number(dur) : 0);
-    }, 0);
-    schedMap[id as string | number] = { date: dates.length ? dates.sort()[0] : null, hours };
-  });
+  for (const id of jobIds) schedMap[id] = { date: null, hours: 0 };
+  const siteMap: Record<string | number, Record<string, unknown>> = {};
+  const customerMap: Record<string | number, Record<string, unknown>> = {};
+
+  await Promise.all([
+    (async () => {
+      for (const ids of chunk(jobIds, 100)) {
+        const blocks = await listAllPages(
+          `/api/v1.0/companies/${company}/schedules/?JobID=in(${ids.join(",")})&pageSize=250`,
+        );
+        for (const b of blocks) {
+          // Schedule rows carry their job ID as the Reference prefix ("446829-368693").
+          const s = schedMap[String(b.Reference ?? "").split("-")[0]];
+          if (!s) continue;
+          const date = b.Date;
+          if (typeof date === "string" && date.length > 0 && (!s.date || date < s.date)) s.date = date;
+          const dur = b.TotalHours ?? b.Duration ?? b.Hours ?? b.PlannedHours;
+          s.hours += dur != null ? Number(dur) : 0;
+        }
+      }
+    })(),
+    (async () => {
+      for (const ids of chunk(siteIds, 100)) {
+        const sites = await listAllPages(
+          `/api/v1.0/companies/${company}/sites/?ID=in(${ids.join(",")})&pageSize=250&columns=ID,Name,Address,PrimaryContact`,
+        );
+        for (const site of sites) {
+          if (site.ID != null) siteMap[site.ID as string | number] = site;
+        }
+      }
+    })(),
+    (async () => {
+      for (const [segment, allIds] of [["companies", companyCustIds], ["individuals", individualCustIds]] as const) {
+        for (const ids of chunk(allIds, 100)) {
+          const custs = await listAllPages(
+            `/api/v1.0/companies/${company}/customers/${segment}/?ID=in(${ids.join(",")})&pageSize=250&columns=ID,Profile`,
+          );
+          for (const c of custs) {
+            if (c.ID != null) customerMap[c.ID as string | number] = c;
+          }
+        }
+      }
+    })(),
+  ]);
 
   const enriched = cfspJobs.map((job) => {
-    const detail         = detailMap[job.ID as string | number] ?? {};
     const sched          = schedMap[job.ID as string | number] ?? { date: null, hours: 0 };
     const custId         = (job.Customer as Record<string, unknown>)?.ID as string | number;
     const customerDetail = customerMap[custId] ?? {};
     const profile        = (customerDetail.Profile ?? {}) as Record<string, unknown>;
     const custGroupObj   = (profile.CustomerGroup ?? {}) as Record<string, unknown>;
-    const custGroupName  = String(custGroupObj.Name ?? "");
-
-    const detailScheduled = detail.Scheduled ?? detail.DateScheduled ?? detail.ScheduledDate ?? detail.DateBooked;
-    const detailSchedDate = typeof detailScheduled === "string"
-      ? detailScheduled
-      : typeof detailScheduled === "object" && detailScheduled !== null
-        ? ((detailScheduled as Record<string, unknown>).Date as string | undefined) ?? null
-        : null;
 
     return {
       ...job,
-      ...detail,
       _site:           siteMap[(job.Site as Record<string, unknown>)?.ID as string | number] ?? null,
-      _scheduledDate:  sched.date || detailSchedDate || null,
+      _scheduledDate:  sched.date,
       _scheduledHours: sched.hours,
-      _customerGroup:  custGroupName,
+      _customerGroup:  String(custGroupObj.Name ?? ""),
     };
   });
 
