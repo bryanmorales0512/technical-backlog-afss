@@ -5,8 +5,11 @@ import type { NextRequest } from 'next/server'
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  // Pass through NextAuth internals and the login page itself
-  if (pathname.startsWith('/api/auth') || pathname === '/login') {
+  // Pass through NextAuth internals, the login page, and the cache warmup
+  // endpoint (pinged by Cloud Scheduler every few minutes so SimPRO data stays
+  // fresh without anyone visiting; warmAll/warmTechSupport dedupe + respect
+  // TTLs, so unauthenticated hits cannot amplify SimPRO API traffic)
+  if (pathname.startsWith('/api/auth') || pathname === '/login' || pathname === '/api/warmup') {
     return NextResponse.next()
   }
 
