@@ -8,17 +8,21 @@ const TOKEN    = process.env.SIMPRO_TOKEN?.replace(/^﻿/, "").trim();
 const hdrs     = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
 
 // Matches the SimPRO "Schedule Breakdown" technician selection the card is
-// reconciled against: Muhammad Soban (1581) and Ryan Gordon (15); their
-// TENTATIVE placeholders are added dynamically. Josh Roger (1753) is
-// estimation/office management — his blocks are not tech-team billable work.
-const TEAM_IDS = new Set<number>([1581, 15]);
+// reconciled against: Muhammad Soban (1581), Ryan Gordon (15) and Josh Roger
+// (1753); Muhammad's and Ryan's TENTATIVE placeholders are added dynamically.
+const TEAM_IDS = new Set<number>([1581, 15, 1753]);
 export const RATE = 100;
 
 export const OB_IT_CACHE_TTL = 5  * 60_000;
 export const QA_CACHE_TTL    = 60 * 60_000;
 
-const AFSS_CC_NAMES = new Set([
-  "afe afex systems",
+// Cost centres the SimPRO Schedule Breakdown report deliberately leaves out —
+// everything else in SimPRO's setup cost-centre list counts.
+const EXCLUDED_CC_NAMES = new Set(["system testing", "afe afex systems"]);
+
+// Fallback baseline only — the live list is fetched from SimPRO setup (see
+// refreshCcNames) so cost centres created after this snapshot still count.
+const FALLBACK_CC_NAMES = new Set([
   "afss works",
   "afe aspirating smoke det parts",
   "afe income",
@@ -58,6 +62,57 @@ const AFSS_CC_NAMES = new Set([
   "water flow testing",
   "water - supression - sprinklers - hyd - fhr",
 ]);
+
+// Live setup cost-centre names (lowercased, trimmed, exclusions removed).
+// Starts from the hard-coded fallback and is replaced by SimPRO's setup list
+// on the first build, then refreshed every 30 minutes.
+let _ccNames: Set<string> = new Set(FALLBACK_CC_NAMES);
+let _ccNamesFetchTs = 0;
+const CC_NAMES_TTL  = 30 * 60_000;
+const CC_NAMES_FILE = "afss-setup-cc-names-v1.json";
+
+async function fetchSetupCcNames(): Promise<Set<string>> {
+  const names = new Set<string>();
+  let page = 1;
+  while (true) {
+    const items = listOf(await simGet(
+      `/api/v1.0/companies/1/setup/accounts/costCenters/?pageSize=250&columns=ID,Name&page=${page}`
+    ));
+    for (const cc of items) {
+      const n = String(cc.Name ?? "").trim().toLowerCase();
+      if (n.length > 0 && !EXCLUDED_CC_NAMES.has(n)) names.add(n);
+    }
+    if (items.length < 250) break;
+    page++;
+  }
+  return names;
+}
+
+export async function refreshCcNames(): Promise<void> {
+  if (Date.now() - _ccNamesFetchTs < CC_NAMES_TTL) return;
+  try {
+    const live = await fetchSetupCcNames();
+    // A suspiciously tiny result means SimPRO errored mid-fetch — keep what we have.
+    if (live.size >= 10) {
+      _ccNames = live;
+      _ccNamesFetchTs = Date.now();
+      const json = JSON.stringify([...live]);
+      fs.writeFile(join(CACHE_DIR, CC_NAMES_FILE), json, "utf-8").catch(() => {});
+      gcsWrite(CC_NAMES_FILE, json);
+      return;
+    }
+  } catch { /* fall through to persisted copy */ }
+  if (_ccNamesFetchTs > 0) return; // already have a live list from earlier
+  try {
+    let raw: string | null = null;
+    try { raw = await fs.readFile(join(CACHE_DIR, CC_NAMES_FILE), "utf-8"); } catch {}
+    if (!raw) raw = await gcsRead(CC_NAMES_FILE);
+    const arr = raw ? JSON.parse(raw) as string[] : null;
+    if (Array.isArray(arr) && arr.length >= 10) {
+      _ccNames = new Set(arr.filter(n => !EXCLUDED_CC_NAMES.has(n)));
+    }
+  } catch { /* keep fallback baseline */ }
+}
 
 export const KNOWN_AFSS_CC_IDS = new Set<number>([
   361944, 364605, 364606, 364607, 366362, 366676,
@@ -99,7 +154,7 @@ export function scheduleCcIdRefresh(): void {
 
 export function obItCacheFile(year: number, month: number, nodc = false) {
   const tag = nodc ? "-nodc" : "";
-  return join(CACHE_DIR, `afss-tech-support-v111${tag}-${year}-${String(month).padStart(2, "0")}.json`);
+  return join(CACHE_DIR, `afss-tech-support-v112${tag}-${year}-${String(month).padStart(2, "0")}.json`);
 }
 export async function readObItCache(year: number, month: number, nodc = false): Promise<{ data: { otherBillable: TechSupportStats; investedTime: TechSupportStats }; ts: number } | null> {
   try { return JSON.parse(await fs.readFile(obItCacheFile(year, month, nodc), "utf-8")); } catch { return null; }
@@ -108,7 +163,7 @@ export async function writeObItCache(year: number, month: number, data: { otherB
   const tag = nodc ? "-nodc" : "";
   const json = JSON.stringify({ data, ts: Date.now() });
   fs.writeFile(obItCacheFile(year, month, nodc), json, "utf-8").catch(() => {});
-  gcsWrite(`afss-tech-support-v111${tag}-${year}-${String(month).padStart(2, "0")}.json`, json);
+  gcsWrite(`afss-tech-support-v112${tag}-${year}-${String(month).padStart(2, "0")}.json`, json);
 }
 
 export function qaCacheFile() { return join(CACHE_DIR, "afss-qa-v1.json"); }
@@ -260,7 +315,7 @@ export type BlockInfo = { staffId: number; date: string; hours: number; jobId: s
 export function resolvedCcName(b: BlockInfo, ccCache?: Map<number, string>): string {
   if (b.ccName.length > 0) return b.ccName.trim().toLowerCase();
   // trim: SimPRO returns some CC names with trailing spaces (e.g. "WATER Flow
-  // Testing ") which would silently fail the AFSS_CC_NAMES lookup
+  // Testing ") which would silently fail the cost-centre name lookup
   if (ccCache && b.ccId > 0 && ccCache.has(b.ccId)) return ccCache.get(b.ccId)!.trim().toLowerCase();
   return "";
 }
@@ -271,9 +326,14 @@ export function isDatacomBlock(b: BlockInfo, ccCache?: Map<number, string>): boo
 }
 
 export function isAfssBlock(b: BlockInfo, ccCache?: Map<number, string>, afssIds: Set<number> = KNOWN_AFSS_CC_IDS): boolean {
-  if (b.ccName.length > 0) return AFSS_CC_NAMES.has(b.ccName.trim().toLowerCase());
+  if (b.ccName.length > 0) {
+    const n = b.ccName.trim().toLowerCase();
+    return _ccNames.has(n) && !EXCLUDED_CC_NAMES.has(n);
+  }
   if (ccCache && b.ccId > 0 && ccCache.has(b.ccId)) {
-    if (AFSS_CC_NAMES.has(ccCache.get(b.ccId)!.trim().toLowerCase())) return true;
+    const n = ccCache.get(b.ccId)!.trim().toLowerCase();
+    if (EXCLUDED_CC_NAMES.has(n)) return false;
+    if (_ccNames.has(n)) return true;
     return afssIds.has(b.ccId);
   }
   return afssIds.has(b.ccId);
@@ -542,6 +602,7 @@ function addStats(a: TechSupportStats, b: TechSupportStats): TechSupportStats {
 async function buildObIt(year: number, month: number): Promise<{ regular: { otherBillable: TechSupportStats; investedTime: TechSupportStats }; nodc: { otherBillable: TechSupportStats; investedTime: TechSupportStats } }> {
   const tentativeIds = await getTentativeStaffIds();
   scheduleCcIdRefresh();
+  await refreshCcNames();
   const afssIds = _dynamicAfssIds;
   const blockList = await fetchAllScheduleBlocks(year, month, tentativeIds);
   const jobIds    = [...new Set(blockList.map(b => b.jobId))];
@@ -611,6 +672,7 @@ export async function warmTechSupport(): Promise<void> {
   const year  = aest.getUTCFullYear();
   const month = aest.getUTCMonth() + 1;
   scheduleCcIdRefresh();
+  await refreshCcNames();
 
   // Build QA once (not month-specific)
   const qa = await buildQaDeduped().catch(() => null);

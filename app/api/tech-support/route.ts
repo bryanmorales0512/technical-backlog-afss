@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   OB_IT_CACHE_TTL, QA_CACHE_TTL,
-  scheduleCcIdRefresh, _dynamicAfssIds,
+  scheduleCcIdRefresh, _dynamicAfssIds, refreshCcNames,
   readObItCache, writeObItCache,
   readQaCache, writeQaCache,
   buildObItDeduped, buildQaDeduped,
@@ -53,6 +53,7 @@ export async function GET(req: Request) {
 
   if (url.searchParams.get("debug") === "list" || url.searchParams.get("debug") === "pipeline") {
     scheduleCcIdRefresh();
+    await refreshCcNames();
     const tentativeIds = await getTentativeStaffIds();
     const afssIds = _dynamicAfssIds;
     const blockList    = await fetchAllScheduleBlocks(year, month, tentativeIds);
