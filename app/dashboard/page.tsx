@@ -71,14 +71,15 @@ function jobHoursAfac(job: RawJob): number {
   return committed > 0 ? committed : 2;
 }
 
-// RM AFSS (Company 1): use max(Committed, 2) — picks up large scheduled jobs
-// (e.g. 5, 6, 7 hr audits) via Committed, guarantees minimum 2 hrs for unscheduled.
+// RM AFSS (Company 1): use actual Committed hours whenever the job has any
+// booked (even under 2 hrs, e.g. 1.5); only unbooked jobs (Committed = 0)
+// default to the 2 hr estimate.
 function jobHoursRm(job: RawJob): number {
   const totals    = job.Totals as Record<string, unknown> | undefined;
   const resCost   = totals?.ResourcesCost as Record<string, unknown> | undefined;
   const labHours  = resCost?.LaborHours   as Record<string, unknown> | undefined;
   const committed = labHours?.Committed   != null ? Number(labHours.Committed) : 0;
-  return committed > 2 ? committed : 2;
+  return committed > 0 ? committed : 2;
 }
 
 function scheduledHrs(job: RawJob): number {
