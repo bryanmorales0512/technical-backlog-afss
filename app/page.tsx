@@ -326,6 +326,29 @@ export default function BacklogPage() {
       ? (stage === "Pending" ? jobToRowADAIRPending : jobToRowADAIRProgress)
       : jobToRow;
 
+  const sortedJobs = [...jobs].sort((a, b) => {
+    const ad = s(a._scheduledDate as string);
+    const bd = s(b._scheduledDate as string);
+    if (!ad && !bd) return 0;
+    if (!ad) return 1;  // unscheduled → end
+    if (!bd) return -1;
+    return ad.localeCompare(bd); // ascending by date
+  });
+
+  function downloadCsv() {
+    const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const lines = [headers, ...sortedJobs.map(getRow)].map(r => r.map(esc).join(","));
+    // BOM so Excel opens UTF-8 correctly
+    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const d = new Date();
+    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `backlog-${companyLabel.replace(/\s+/g, "-")}-${stage}-${ymd}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   return (
     <div className="flex flex-col h-screen" onClick={() => setDropdownOpen(false)}>
 
@@ -418,6 +441,13 @@ export default function BacklogPage() {
           >
             Refresh now
           </button>
+          <button
+            onClick={downloadCsv}
+            disabled={loading || jobs.length === 0}
+            className="px-2 py-1 rounded bg-green-600 hover:bg-green-700 text-white font-semibold disabled:opacity-50"
+          >
+            Download CSV
+          </button>
           <span className="text-neutral-300 hidden sm:inline">Auto every 60s</span>
         </div>
       </div>
@@ -457,14 +487,7 @@ export default function BacklogPage() {
                 </td>
               </tr>
             )}
-            {[...jobs].sort((a, b) => {
-                const ad = s(a._scheduledDate as string);
-                const bd = s(b._scheduledDate as string);
-                if (!ad && !bd) return 0;
-                if (!ad) return 1;  // unscheduled → end
-                if (!bd) return -1;
-                return ad.localeCompare(bd); // ascending by date
-              }).map((job, row) => {
+            {sortedJobs.map((job, row) => {
               const cells = getRow(job);
               return (
                 <tr
