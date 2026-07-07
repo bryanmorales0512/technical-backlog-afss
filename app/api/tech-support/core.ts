@@ -7,7 +7,11 @@ const BASE_URL = process.env.SIMPRO_BASE_URL;
 const TOKEN    = process.env.SIMPRO_TOKEN?.replace(/^﻿/, "").trim();
 const hdrs     = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
 
-const TEAM_IDS = new Set<number>([1581, 15, 1753]);
+// Matches the SimPRO "Schedule Breakdown" technician selection the card is
+// reconciled against: Muhammad Soban (1581) and Ryan Gordon (15); their
+// TENTATIVE placeholders are added dynamically. Josh Roger (1753) is
+// estimation/office management — his blocks are not tech-team billable work.
+const TEAM_IDS = new Set<number>([1581, 15]);
 export const RATE = 100;
 
 export const OB_IT_CACHE_TTL = 5  * 60_000;
@@ -254,8 +258,10 @@ export async function getTentativeStaffIds(): Promise<Set<number>> {
 export type BlockInfo = { staffId: number; date: string; hours: number; jobId: string; ccId: number; ccName: string; sectionId: number };
 
 export function resolvedCcName(b: BlockInfo, ccCache?: Map<number, string>): string {
-  if (b.ccName.length > 0) return b.ccName.toLowerCase();
-  if (ccCache && b.ccId > 0 && ccCache.has(b.ccId)) return ccCache.get(b.ccId)!.toLowerCase();
+  if (b.ccName.length > 0) return b.ccName.trim().toLowerCase();
+  // trim: SimPRO returns some CC names with trailing spaces (e.g. "WATER Flow
+  // Testing ") which would silently fail the AFSS_CC_NAMES lookup
+  if (ccCache && b.ccId > 0 && ccCache.has(b.ccId)) return ccCache.get(b.ccId)!.trim().toLowerCase();
   return "";
 }
 
@@ -265,9 +271,9 @@ export function isDatacomBlock(b: BlockInfo, ccCache?: Map<number, string>): boo
 }
 
 export function isAfssBlock(b: BlockInfo, ccCache?: Map<number, string>, afssIds: Set<number> = KNOWN_AFSS_CC_IDS): boolean {
-  if (b.ccName.length > 0) return AFSS_CC_NAMES.has(b.ccName.toLowerCase());
+  if (b.ccName.length > 0) return AFSS_CC_NAMES.has(b.ccName.trim().toLowerCase());
   if (ccCache && b.ccId > 0 && ccCache.has(b.ccId)) {
-    if (AFSS_CC_NAMES.has(ccCache.get(b.ccId)!.toLowerCase())) return true;
+    if (AFSS_CC_NAMES.has(ccCache.get(b.ccId)!.trim().toLowerCase())) return true;
     return afssIds.has(b.ccId);
   }
   return afssIds.has(b.ccId);
@@ -370,7 +376,7 @@ export async function resolveUnknownCcNames(blocks: BlockInfo[], ccCache: Map<nu
       let name = "";
       if (sectionId > 0) {
         for (const cc of listOf(raw)) {
-          const n = String((cc.CostCenter as Record<string,unknown>)?.Name ?? cc.Name ?? "");
+          const n = String((cc.CostCenter as Record<string,unknown>)?.Name ?? cc.Name ?? "").trim();
           if (n.length > 0) { name = n; break; }
         }
       } else {
@@ -378,7 +384,7 @@ export async function resolveUnknownCcNames(blocks: BlockInfo[], ccCache: Map<nu
           const cc = sect.CostCenter as Record<string, unknown> | undefined;
           if (!cc) continue;
           const id = Number(cc.ID   ?? 0);
-          const n  = String(cc.Name ?? "");
+          const n  = String(cc.Name ?? "").trim();
           if (id === ccId && n.length > 0) { name = n; break; }
           if (id > 0 && n.length > 0 && !ccCache.has(id)) ccCache.set(id, n);
         }
