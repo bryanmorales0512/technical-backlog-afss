@@ -61,9 +61,12 @@ function jobHours(job: RawJob): number {
   return est > 0 ? est : 2;
 }
 
-// CHUBB/AFAC (Company 8): use Committed hours — reflects all booked audit time
-// regardless of when schedule blocks fall, giving a stable demand figure.
+// CHUBB/AFAC (Company 8): booked schedule hours first — SimPRO's Committed can
+// be 0 even when a schedule block exists (resource/rate setup), and the manual
+// report counts the booked time. Only truly unbooked jobs default to 2.
 function jobHoursAfac(job: RawJob): number {
+  const sched = Number(job._scheduledHours ?? 0);
+  if (sched > 0) return sched;
   const totals    = job.Totals as Record<string, unknown> | undefined;
   const resCost   = totals?.ResourcesCost as Record<string, unknown> | undefined;
   const labHours  = resCost?.LaborHours   as Record<string, unknown> | undefined;
