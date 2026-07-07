@@ -154,7 +154,7 @@ export function scheduleCcIdRefresh(): void {
 
 export function obItCacheFile(year: number, month: number, nodc = false) {
   const tag = nodc ? "-nodc" : "";
-  return join(CACHE_DIR, `afss-tech-support-v112${tag}-${year}-${String(month).padStart(2, "0")}.json`);
+  return join(CACHE_DIR, `afss-tech-support-v113${tag}-${year}-${String(month).padStart(2, "0")}.json`);
 }
 export async function readObItCache(year: number, month: number, nodc = false): Promise<{ data: { otherBillable: TechSupportStats; investedTime: TechSupportStats }; ts: number } | null> {
   try { return JSON.parse(await fs.readFile(obItCacheFile(year, month, nodc), "utf-8")); } catch { return null; }
@@ -163,7 +163,7 @@ export async function writeObItCache(year: number, month: number, data: { otherB
   const tag = nodc ? "-nodc" : "";
   const json = JSON.stringify({ data, ts: Date.now() });
   fs.writeFile(obItCacheFile(year, month, nodc), json, "utf-8").catch(() => {});
-  gcsWrite(`afss-tech-support-v112${tag}-${year}-${String(month).padStart(2, "0")}.json`, json);
+  gcsWrite(`afss-tech-support-v113${tag}-${year}-${String(month).padStart(2, "0")}.json`, json);
 }
 
 export function qaCacheFile() { return join(CACHE_DIR, "afss-qa-v1.json"); }
@@ -467,12 +467,12 @@ export function jobEstHours(job: Record<string, unknown>): number {
   return Number.isFinite(est) && est > 0 ? est : 0;
 }
 
-// Hours are scheduled block hours (SimPRO's report basis); jobs are counted
-// once per unique job so the "# of Jobs" column matches SimPRO instead of
-// re-counting a job for every day it is scheduled.
+// Hours are scheduled block hours (SimPRO's report basis); "jobs" counts one
+// per schedule row (not deduped per unique job) so the "# of Jobs" column
+// matches SimPRO's Schedule Breakdown "Results" count exactly — a job
+// scheduled across N days counts N times, same as SimPRO's row total.
 export function calcOtherBillable(blockList: BlockInfo[], jobMap: Map<string, Record<string, unknown>>, ccCache: Map<number, string>, excludeDatacom = false, afssIds: Set<number> = KNOWN_AFSS_CC_IDS): TechSupportStats {
   const stat: TechSupportStats = { jobs: 0, hours: 0, amount: 0 };
-  const counted = new Set<string>();
   for (const b of blockList) {
     if (!isAfssBlock(b, ccCache, afssIds)) continue;
     if (excludeDatacom && isDatacomBlock(b, ccCache)) continue;
@@ -483,7 +483,7 @@ export function calcOtherBillable(blockList: BlockInfo[], jobMap: Map<string, Re
       if (stage !== "pending" && stage !== "progress") continue;
       if (isInternalClient(job)) continue;
     }
-    if (!counted.has(b.jobId)) { counted.add(b.jobId); stat.jobs++; }
+    stat.jobs++;
     stat.hours  = Math.round((stat.hours  + b.hours)        * 100) / 100;
     stat.amount = Math.round((stat.amount + b.hours * RATE) * 100) / 100;
   }
@@ -492,7 +492,6 @@ export function calcOtherBillable(blockList: BlockInfo[], jobMap: Map<string, Re
 
 export function calcInvestedTime(blockList: BlockInfo[], jobMap: Map<string, Record<string, unknown>>, ccCache: Map<number, string>, excludeDatacom = false, afssIds: Set<number> = KNOWN_AFSS_CC_IDS): TechSupportStats {
   const stat: TechSupportStats = { jobs: 0, hours: 0, amount: 0 };
-  const counted = new Set<string>();
   for (const b of blockList) {
     if (!isAfssBlock(b, ccCache, afssIds)) continue;
     if (excludeDatacom && isDatacomBlock(b, ccCache)) continue;
@@ -501,7 +500,7 @@ export function calcInvestedTime(blockList: BlockInfo[], jobMap: Map<string, Rec
     const stage = String(job.Stage ?? "").toLowerCase();
     if (stage !== "pending" && stage !== "progress") continue;
     if (!isInternalClient(job)) continue;
-    if (!counted.has(b.jobId)) { counted.add(b.jobId); stat.jobs++; }
+    stat.jobs++;
     stat.hours  = Math.round((stat.hours  + b.hours)        * 100) / 100;
     stat.amount = Math.round((stat.amount + b.hours * RATE) * 100) / 100;
   }
