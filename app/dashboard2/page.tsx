@@ -612,7 +612,21 @@ export default function Dashboard2Page() {
   const allJobs = Object.values(byCompany).flat().filter(j => !isDatacomJob(j)).filter(j => !isBlockPlansJob(j));
   const coJobs  = (id: number) => (byCompany[id] ?? []).filter(j => !isBlockPlansJob(j));
   const filterJobs = (jobs: RawJob[]) => {
-    if (monthFilter === "all") return jobs;
+    if (monthFilter === "all") {
+      // AE Evac (company 10): the backlog view only counts audits booked from
+      // the start of the current month to the end of the month after next
+      // (e.g. Jul-Sep) — SimPRO carries next year's evac program with 2027
+      // schedule dates. Unscheduled (tentative) jobs stay visible.
+      const winStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+      const winEndD  = new Date(now.getFullYear(), now.getMonth() + 3, 0);
+      const winEnd   = `${winEndD.getFullYear()}-${String(winEndD.getMonth() + 1).padStart(2, "0")}-${String(winEndD.getDate()).padStart(2, "0")}`;
+      return jobs.filter(j => {
+        if ((j._company as number) !== 10) return true;
+        const sched = j._scheduledDate as string | null;
+        if (!sched) return true;
+        return sched >= winStart && sched <= winEnd;
+      });
+    }
     const [fy, fm] = monthFilter.split("-").map(Number);
     const isFutureMonth = fy > now.getFullYear() || (fy === now.getFullYear() && fm > now.getMonth() + 1);
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
