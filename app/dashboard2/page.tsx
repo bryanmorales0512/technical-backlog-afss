@@ -195,12 +195,34 @@ function StatCells({ s: st, bold, loading }: { s: Stats; bold?: boolean; loading
   );
 }
 
+// Last-known jobs persisted in the browser so the dashboard never renders empty
+// (or half-loaded) numbers: stored data paints instantly and each company's
+// figures are silently replaced once its complete live response arrives.
+const JOBS_LS_KEY = "d2-jobs-v1";
+
+function readStoredJobs(): Record<number, RawJob[]> | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const s = localStorage.getItem(JOBS_LS_KEY);
+    const parsed = s ? (JSON.parse(s) as Record<number, RawJob[]>) : null;
+    return parsed && Object.keys(parsed).length > 0 ? parsed : null;
+  } catch { return null; }
+}
+
+function readStoredJobsTs(): Date | null {
+  try {
+    const t = typeof window !== "undefined" ? localStorage.getItem(`${JOBS_LS_KEY}-ts`) : null;
+    return t ? new Date(Number(t)) : null;
+  } catch { return null; }
+}
+
 export default function Dashboard2Page() {
-  const [byCompany, setByCompany] = useState<Record<number, RawJob[]>>({});
-  const [loading,   setLoading]   = useState(true);
-  const [hasData,   setHasData]   = useState(false);
-  const [updated,   setUpdated]   = useState<Date | null>(null);
-  const [isPartial, setIsPartial] = useState(false);
+  const [byCompany, setByCompany] = useState<Record<number, RawJob[]>>(() => readStoredJobs() ?? {});
+  // Latest jobs, readable synchronously inside load() and persisted to localStorage.
+  const byCompanyRef = useRef(byCompany);
+  const [loading,   setLoading]   = useState(Object.keys(byCompany).length === 0);
+  const [hasData,   setHasData]   = useState(Object.keys(byCompany).length > 0);
+  const [updated,   setUpdated]   = useState<Date | null>(() => readStoredJobsTs());
   const partialTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [now,            setNow]            = useState(() => new Date());
   const [team,           setTeam]           = useState<TeamMember[]>([]);
@@ -252,43 +274,46 @@ export default function Dashboard2Page() {
 
   async function load(force = false, silent = false) {
     if (partialTimerRef.current) { clearTimeout(partialTimerRef.current); partialTimerRef.current = null; }
-    if (silent) { setSyncing(true); } else { setLoading(true); setIsPartial(true); }
-    let anyPartial = false;
-    let anyFailed  = false;
+    // Never blank the table when we already have data (stored or live) — sync
+    // quietly behind the current numbers and replace them as results land.
+    const quiet = silent || Object.keys(byCompanyRef.current).length > 0;
+    if (quiet) { setSyncing(true); } else { setLoading(true); }
+    let anyFailed = false;
     const sfx = force ? "&force=1" : "";
-    // Accumulator for this load cycle — replaced company-by-company as responses arrive
-    const next: Record<number, RawJob[]> = {};
 
     await Promise.all(
-      COMPANIES.flatMap(co =>
-        (["Pending", "Progress"] as const).map(async stage => {
-          try {
-            const r = await fetch(`/api/data?company=${co.id}&stage=${stage}${sfx}`);
-            if (r.headers.get("X-Partial") === "1") { anyPartial = true; if (!silent) setIsPartial(true); }
-            const d = await r.json();
-            if (d?.error) throw new Error(d.error); // error response — retry later
-            const jobs: RawJob[] = Array.isArray(d) ? d : (d.Result ?? []);
-            const mapped = jobs.map((j: RawJob) => ({ ...j, _company: co.id }));
-            next[co.id] = [...(next[co.id] ?? []), ...mapped];
-            // Paint the table as soon as each response lands — don't wait for all 6
-            setByCompany(prev => ({ ...prev, [co.id]: next[co.id] }));
-            setHasData(true);
-            setUpdated(new Date());
-          } catch { anyFailed = true; /* skip failed company/stage — retry triggers below */ }
-        })
-      )
+      COMPANIES.map(async co => {
+        // Fetch both stages before painting the company — a lone Pending response
+        // would otherwise briefly shrink the company to half its jobs.
+        const stages = await Promise.all(
+          (["Pending", "Progress"] as const).map(async stage => {
+            try {
+              const r = await fetch(`/api/data?company=${co.id}&stage=${stage}${sfx}`);
+              const d = await r.json();
+              if (d?.error) throw new Error(d.error); // error response — retry later
+              const jobs: RawJob[] = Array.isArray(d) ? d : (d.Result ?? []);
+              return jobs.map((j: RawJob) => ({ ...j, _company: co.id }));
+            } catch { return null; }
+          })
+        );
+        if (stages.some(s => s === null)) { anyFailed = true; return; } // keep last-known data for this company
+        byCompanyRef.current = { ...byCompanyRef.current, [co.id]: (stages as RawJob[][]).flat() };
+        setByCompany(byCompanyRef.current);
+        setHasData(true);
+        setUpdated(new Date());
+      })
     );
 
-    if (silent) { setSyncing(false); } else { setIsPartial(anyPartial); setLoading(false); }
-    if (!silent) {
-      if (anyPartial) {
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        partialTimerRef.current = setTimeout(() => load(), 5_000);
-      } else if (anyFailed) {
-        // Some companies failed (e.g. cold cache still warming) — retry after 30 s
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        partialTimerRef.current = setTimeout(() => load(), 30_000);
-      }
+    try {
+      localStorage.setItem(JOBS_LS_KEY, JSON.stringify(byCompanyRef.current));
+      localStorage.setItem(`${JOBS_LS_KEY}-ts`, String(Date.now()));
+    } catch {} // quota / private mode — the stored copy is an optimisation only
+
+    if (quiet) { setSyncing(false); } else { setLoading(false); }
+    if (!silent && anyFailed) {
+      // Some companies failed (e.g. cold cache still warming) — retry after 30 s
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      partialTimerRef.current = setTimeout(() => load(), 30_000);
     }
   }
 
@@ -674,9 +699,6 @@ export default function Dashboard2Page() {
             <span className="text-xs text-neutral-400 shrink-0">Updated: {updated.toLocaleTimeString()}</span>
           )}
           {syncing && !loading && <span className="text-xs text-blue-400 animate-pulse shrink-0">Syncing…</span>}
-          {isPartial && !loading && (
-            <span className="text-xs text-amber-500 animate-pulse shrink-0">Refreshing…</span>
-          )}
           <span className="text-xs text-neutral-400 truncate">
             {hasData && `${visibleAll.length} total jobs${monthFilter !== "all" ? ` in ${monthOptions.find(o => o.value === monthFilter)?.label ?? ""}` : " across all companies"}`}
           </span>
