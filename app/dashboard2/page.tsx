@@ -263,10 +263,10 @@ export default function Dashboard2Page() {
   // Technical Support Works — all three sections auto-fetched from API.
   // Initialise from localStorage so last-known values show instantly on refresh.
   const [obData, setObData] = useState<{ jobs: number; hours: number; amount: number } | null>(() => {
-    try { const mf = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("m") ?? "all") : "all"; const s = localStorage.getItem(`d2-ts-ob-${mf}`); return s ? JSON.parse(s) : null; } catch { return null; }
+    try { const mf = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("m") ?? "all") : "all"; const s = localStorage.getItem(`d2-ts-obx-${mf}`); return s ? JSON.parse(s) : null; } catch { return null; }
   });
   const [itData, setItData] = useState<{ jobs: number; hours: number; amount: number } | null>(() => {
-    try { const mf = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("m") ?? "all") : "all"; const s = localStorage.getItem(`d2-ts-it-${mf}`); return s ? JSON.parse(s) : null; } catch { return null; }
+    try { const mf = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("m") ?? "all") : "all"; const s = localStorage.getItem(`d2-ts-itx-${mf}`); return s ? JSON.parse(s) : null; } catch { return null; }
   });
   const [qaData, setQaData] = useState<{ jobs: number; hours: number; amount: number } | null>(() => {
     try { const mf = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("m") ?? "all") : "all"; const s = localStorage.getItem(`d2-ts-qa-${mf}`); return s ? JSON.parse(s) : null; } catch { return null; }
@@ -490,6 +490,7 @@ export default function Dashboard2Page() {
 
   function loadTechSupport(force = false, mf = monthFilter) {
     const p = new URLSearchParams();
+    p.set("excludeDatacom", "1"); // this page is the NO DATACOM dashboard
     if (force) p.set("force", "1");
     if (mf === "all") {
       p.set("all", "1");
@@ -503,8 +504,8 @@ export default function Dashboard2Page() {
       .then(r => r.json())
       .then(d => {
         if (monthFilterRef.current !== mf) return; // discard stale response
-        if (d?.otherBillable    != null) { setObData(d.otherBillable);    try { localStorage.setItem(`d2-ts-ob-${mf}`, JSON.stringify(d.otherBillable));    } catch {} }
-        if (d?.investedTime     != null) { setItData(d.investedTime);     try { localStorage.setItem(`d2-ts-it-${mf}`, JSON.stringify(d.investedTime));     } catch {} }
+        if (d?.otherBillable    != null) { setObData(d.otherBillable);    try { localStorage.setItem(`d2-ts-obx-${mf}`, JSON.stringify(d.otherBillable));    } catch {} }
+        if (d?.investedTime     != null) { setItData(d.investedTime);     try { localStorage.setItem(`d2-ts-itx-${mf}`, JSON.stringify(d.investedTime));     } catch {} }
         if (d?.qualityAssurance != null) { setQaData(d.qualityAssurance); try { localStorage.setItem(`d2-ts-qa-${mf}`, JSON.stringify(d.qualityAssurance)); } catch {} }
       })
       .catch(() => {})
@@ -573,8 +574,8 @@ export default function Dashboard2Page() {
   useEffect(() => {
     // Restore last-known tech support values for this month immediately
     try {
-      const ob = localStorage.getItem(`d2-ts-ob-${monthFilter}`);
-      const it = localStorage.getItem(`d2-ts-it-${monthFilter}`);
+      const ob = localStorage.getItem(`d2-ts-obx-${monthFilter}`);
+      const it = localStorage.getItem(`d2-ts-itx-${monthFilter}`);
       const qa = localStorage.getItem(`d2-ts-qa-${monthFilter}`);
       setObData(ob ? JSON.parse(ob) : null);
       setItData(it ? JSON.parse(it) : null);
