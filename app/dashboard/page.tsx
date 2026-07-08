@@ -221,6 +221,7 @@ export default function DashboardPage() {
   const [now,            setNow]            = useState(() => new Date());
   const [team,           setTeam]           = useState<TeamMember[]>([]);
   const [publicHolidays, setPublicHolidays] = useState<PublicHoliday[]>([]);
+  const [monthlyHolidays, setMonthlyHolidays] = useState<Record<string, PublicHoliday[]>>({});
   const [extraTeam,      setExtraTeam]      = useState<TeamMember[]>([]);
   const [hiddenCoreIds,  setHiddenCoreIds]  = useState<Set<number>>(new Set());
   const [addingMember,   setAddingMember]   = useState(false);
@@ -575,6 +576,37 @@ export default function DashboardPage() {
     loadAfacProspect(false, monthFilter); // eslint-disable-line react-hooks/exhaustive-deps
   }, [monthFilter]);
 
+  // Fetch public holidays for every month from now through the selected
+  // month (not just the selected one) so Technical Team Supply can show a
+  // column per month when a future month is selected.
+  useEffect(() => {
+    if (monthFilter === "all") return;
+    const [fy, fm] = monthFilter.split("-").map(Number);
+    const months: { year: number; month: number }[] = [];
+    let y = now.getFullYear(), m = now.getMonth() + 1;
+    while (y < fy || (y === fy && m <= fm)) {
+      months.push({ year: y, month: m });
+      m++; if (m > 12) { m = 1; y++; }
+    }
+    let cancelled = false;
+    Promise.all(months.map(async ({ year, month }): Promise<[string, PublicHoliday[]]> => {
+      const key = `${year}-${String(month).padStart(2, "0")}`;
+      try {
+        const r = await fetch(`/api/public-holidays?year=${year}&month=${month}`);
+        const d = await r.json();
+        return [key, Array.isArray(d) ? d : []];
+      } catch { return [key, []]; }
+    })).then(results => {
+      if (cancelled) return;
+      setMonthlyHolidays(prev => {
+        const next = { ...prev };
+        for (const [k, v] of results) next[k] = v;
+        return next;
+      });
+    });
+    return () => { cancelled = true; };
+  }, [monthFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Cold-start recovery: if tech-support data is still null 15 s after mount
   // (server was still building the cache when the first request arrived),
   // keep retrying every 15 s until it loads.
@@ -687,6 +719,28 @@ export default function DashboardPage() {
     const isFuture = fy > now.getFullYear() || (fy === now.getFullYear() && fm > now.getMonth() + 1);
     if (isFuture) return totalWorkingDaysInMonth(fy, fm) - publicHolidays.length * 8;
     return totalWorkingDaysInMonth(fy, fm) - publicHolidays.length * 8;
+  };
+
+  // Every month from now through the selected month (inclusive) — drives
+  // Technical Team Supply showing one column per month instead of just two.
+  // A past-month selection just shows that single month, same as before.
+  const supplyMonths: { year: number; month: number }[] = (() => {
+    const endY = supplyMonthDate.getFullYear(), endM = supplyMonthDate.getMonth() + 1;
+    const isPast = endY < now.getFullYear() || (endY === now.getFullYear() && endM < now.getMonth() + 1);
+    if (isPast) return [{ year: endY, month: endM }];
+    const months: { year: number; month: number }[] = [];
+    let y = now.getFullYear(), m = now.getMonth() + 1;
+    while (y < endY || (y === endY && m <= endM)) {
+      months.push({ year: y, month: m });
+      m++; if (m > 12) { m = 1; y++; }
+    }
+    return months;
+  })();
+  const holidaysFor = (year: number, month: number): PublicHoliday[] =>
+    monthlyHolidays[`${year}-${String(month).padStart(2, "0")}`] ?? [];
+  const monthSupplyHours = (member: TeamMember, year: number, month: number): number => {
+    if (year === now.getFullYear() && month === now.getMonth() + 1) return member.monthlyHours;
+    return totalWorkingDaysInMonth(year, month) - holidaysFor(year, month).length * 8;
   };
 
   const TH = ({ children }: { children: React.ReactNode }) => (
@@ -858,31 +912,37 @@ export default function DashboardPage() {
                   <td rowSpan={2} className="border border-gray-400 px-3 py-3 font-bold text-base text-center align-middle" style={{ backgroundColor: "#1e293b", color: "#fff", width: 160 }}>
                     Technical Team Supply
                   </td>
-                  <td colSpan={isFutureMonthFilter ? 4 : 3} className="border border-gray-400 px-3 py-1 text-center font-semibold text-xs" style={{ backgroundColor: "#475569", color: "#fff" }}>
+                  <td colSpan={supplyMonths.length + 1} className="border border-gray-400 px-3 py-1 text-center font-semibold text-xs" style={{ backgroundColor: "#475569", color: "#fff" }}>
                     END OF PERIOD GENERATED
                   </td>
                 </tr>
                 <tr>
-                  <td colSpan={isFutureMonthFilter ? 4 : 3} className="border border-gray-400 px-3 py-2 text-center font-bold text-base" style={{ backgroundColor: "#1e293b", color: "#fff" }}>
-                    {supplyMonthDate.toLocaleString("en-AU", { month: "long" })}
+                  <td colSpan={supplyMonths.length + 1} className="border border-gray-400 px-3 py-2 text-center font-bold text-base" style={{ backgroundColor: "#1e293b", color: "#fff" }}>
+                    {supplyMonths.length > 1
+                      ? `${new Date(supplyMonths[0].year, supplyMonths[0].month - 1, 1).toLocaleString("en-AU", { month: "long" })} – ${new Date(supplyMonths[supplyMonths.length - 1].year, supplyMonths[supplyMonths.length - 1].month - 1, 1).toLocaleString("en-AU", { month: "long" })}`
+                      : supplyMonthDate.toLocaleString("en-AU", { month: "long" })}
                   </td>
                 </tr>
                 <tr>
                   <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9" }}>APFS / AUDITOR</th>
-                  {isFutureMonthFilter && (
-                    <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 70 }}>{now.toLocaleString("en-AU", { month: "short" })}</th>
-                  )}
-                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 70 }}>{supplyMonthDate.toLocaleString("en-AU", { month: "short" })}</th>
+                  {supplyMonths.map(({ year, month }) => (
+                    <th key={`${year}-${month}`} className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 70 }}>
+                      {new Date(year, month - 1, 1).toLocaleString("en-AU", { month: "short" })}
+                    </th>
+                  ))}
                   <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 100 }}>Total Supply Hours</th>
                   <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 190 }}>Roles</th>
                 </tr>
               </thead>
               <tbody>
                 {team.filter(m => !hiddenCoreIds.has(m.id)).map(member => {
-                  const leaveDays  = remainingLeaveDays(member, supplyMonthDate);
-                  const leaveHrs   = leaveDays * 8;
-                  const netHrs     = Math.max(0, getMonthHours(member) - leaveHrs);
                   const onLeaveNow = isOnLeaveToday(member, now);
+                  const monthVals = supplyMonths.map(({ year, month }) => {
+                    const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
+                    if (isCurrent) return member.monthlyHours;
+                    const leaveDays = remainingLeaveDays(member, new Date(year, month - 1, 1));
+                    return Math.max(0, monthSupplyHours(member, year, month) - leaveDays * 8);
+                  });
                   return (
                     <tr key={member.id}>
                       <td className="border border-gray-400 px-3 py-2 text-center text-sm">
@@ -896,11 +956,10 @@ export default function DashboardPage() {
                           >×</button>
                         </span>
                       </td>
-                      {isFutureMonthFilter && (
-                        <td className="border border-gray-400 px-2 py-2 text-center text-sm">{member.monthlyHours}</td>
-                      )}
-                      <td className="border border-gray-400 px-2 py-2 text-center text-sm">{netHrs}</td>
-                      <td className="border border-gray-400 px-2 py-2 text-center text-sm">{isFutureMonthFilter ? member.monthlyHours + getMonthHours(member) : getMonthHours(member)}</td>
+                      {monthVals.map((v, i) => (
+                        <td key={i} className="border border-gray-400 px-2 py-2 text-center text-sm">{v}</td>
+                      ))}
+                      <td className="border border-gray-400 px-2 py-2 text-center text-sm">{monthVals.reduce((s, v) => s + v, 0)}</td>
                       <td className="border border-gray-400 px-2 py-2 text-center text-xs">{member.role}</td>
                     </tr>
                   );
@@ -908,9 +967,13 @@ export default function DashboardPage() {
 
                 {/* Extra (manager-added) team members */}
                 {extraTeam.map(member => {
-                  const leaveDays  = remainingLeaveDays(member, supplyMonthDate);
-                  const netHrs     = Math.max(0, getMonthHours(member) - leaveDays * 8);
                   const onLeaveNow = isOnLeaveToday(member, now);
+                  const monthVals = supplyMonths.map(({ year, month }) => {
+                    const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
+                    if (isCurrent) return member.monthlyHours;
+                    const leaveDays = remainingLeaveDays(member, new Date(year, month - 1, 1));
+                    return Math.max(0, monthSupplyHours(member, year, month) - leaveDays * 8);
+                  });
                   return (
                     <tr key={member.id} style={{ backgroundColor: "#eef2f6" }}>
                       <td className="border border-gray-400 px-3 py-2 text-center text-sm">
@@ -924,28 +987,42 @@ export default function DashboardPage() {
                           >×</button>
                         </span>
                       </td>
-                      {isFutureMonthFilter && (
-                        <td className="border border-gray-400 px-2 py-2 text-center text-sm">{member.monthlyHours}</td>
-                      )}
-                      <td className="border border-gray-400 px-2 py-2 text-center text-sm">{netHrs}</td>
-                      <td className="border border-gray-400 px-2 py-2 text-center text-sm">{isFutureMonthFilter ? member.monthlyHours + getMonthHours(member) : getMonthHours(member)}</td>
+                      {monthVals.map((v, i) => (
+                        <td key={i} className="border border-gray-400 px-2 py-2 text-center text-sm">{v}</td>
+                      ))}
+                      <td className="border border-gray-400 px-2 py-2 text-center text-sm">{monthVals.reduce((s, v) => s + v, 0)}</td>
                       <td className="border border-gray-400 px-2 py-2 text-center text-xs">{member.role}</td>
                     </tr>
                   );
                 })}
 
-                {/* Public Holidays row */}
-                {publicHolidays.length > 0 && (
+                {/* Public Holidays row — current month is blank here since its
+                    deduction is already baked into member.monthlyHours server-side */}
+                {supplyMonths.some(({ year, month }) => !(year === now.getFullYear() && month === now.getMonth() + 1) && holidaysFor(year, month).length > 0) && (
                   <tr>
                     <td className="border border-gray-400 px-3 py-1 text-center text-xs font-semibold text-red-600">Public Holidays</td>
-                    {isFutureMonthFilter && <td className="border border-gray-400 px-2 py-1 text-center text-xs text-red-600"></td>}
-                    <td className="border border-gray-400 px-2 py-1 text-center text-xs text-red-600">−{publicHolidays.length * 8}</td>
-                    <td className="border border-gray-400 px-2 py-1 text-center text-xs text-red-600">−{publicHolidays.length * 8}</td>
+                    {supplyMonths.map(({ year, month }) => {
+                      const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
+                      const h = isCurrent ? [] : holidaysFor(year, month);
+                      return (
+                        <td key={`${year}-${month}`} className="border border-gray-400 px-2 py-1 text-center text-xs text-red-600">
+                          {h.length > 0 ? `−${h.length * 8}` : ""}
+                        </td>
+                      );
+                    })}
+                    <td className="border border-gray-400 px-2 py-1 text-center text-xs text-red-600">
+                      −{supplyMonths.reduce((s, { year, month }) => {
+                        const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
+                        return s + (isCurrent ? 0 : holidaysFor(year, month).length * 8);
+                      }, 0)}
+                    </td>
                     <td className="border border-gray-400 px-2 py-1 text-xs text-red-600">
-                      {publicHolidays.map(ph => {
-                        const [hy, hm, d] = ph.date.split("-");
-                        const hDate = new Date(Number(hy), Number(hm) - 1, 1);
-                        return `${ph.name} (${parseInt(d)} ${hDate.toLocaleString("en-AU", { month: "short" })})`;
+                      {supplyMonths.flatMap(({ year, month }) => {
+                        const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
+                        return isCurrent ? [] : holidaysFor(year, month).map(ph => {
+                          const d = ph.date.split("-")[2];
+                          return `${ph.name} (${parseInt(d)} ${new Date(year, month - 1, 1).toLocaleString("en-AU", { month: "short" })})`;
+                        });
                       }).join(" · ")}
                     </td>
                   </tr>
@@ -954,19 +1031,28 @@ export default function DashboardPage() {
                 {/* Total row (includes extra members) */}
                 <tr className="font-bold">
                   <td className="border border-gray-400 px-3 py-2" style={{ backgroundColor: "#f1f5f9" }} />
-                  {isFutureMonthFilter && (
-                    <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#f1f5f9" }}>
-                      {[...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + m.monthlyHours, 0)}
-                    </td>
-                  )}
+                  {supplyMonths.map(({ year, month }) => {
+                    const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
+                    const colTotal = [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => {
+                      if (isCurrent) return s + m.monthlyHours;
+                      const leaveDays = remainingLeaveDays(m, new Date(year, month - 1, 1));
+                      return s + Math.max(0, monthSupplyHours(m, year, month) - leaveDays * 8);
+                    }, 0);
+                    return (
+                      <td key={`${year}-${month}`} className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#f1f5f9" }}>
+                        {colTotal}
+                      </td>
+                    );
+                  })}
                   <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#f1f5f9" }}>
-                    {[...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + Math.max(0, getMonthHours(m) - remainingLeaveDays(m, supplyMonthDate) * 8), 0) - publicHolidays.length * 8}
-                  </td>
-                  <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#f1f5f9" }}>
-                    {isFutureMonthFilter
-                      ? [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + m.monthlyHours + getMonthHours(m), 0) - publicHolidays.length * 8
-                      : [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + getMonthHours(m), 0) - publicHolidays.length * 8
-                    }
+                    {supplyMonths.reduce((total, { year, month }) => {
+                      const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
+                      return total + [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => {
+                        if (isCurrent) return s + m.monthlyHours;
+                        const leaveDays = remainingLeaveDays(m, new Date(year, month - 1, 1));
+                        return s + Math.max(0, monthSupplyHours(m, year, month) - leaveDays * 8);
+                      }, 0);
+                    }, 0)}
                   </td>
                   <td className="border border-gray-400 px-2 py-2" style={{ backgroundColor: "#f1f5f9" }} />
                 </tr>
