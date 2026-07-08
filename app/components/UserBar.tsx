@@ -10,8 +10,9 @@ export default function UserBar() {
   if (!session || pathname === '/login') return null
 
   return (
-    <div className="flex items-center justify-between gap-3 px-4 py-1.5 bg-white border-b border-gray-200 text-xs text-gray-500 min-w-0">
-      <div className="flex items-center gap-4">
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-1.5 bg-white border-b border-gray-200 text-xs text-gray-500 min-w-0">
+      <div />
+      <div className="flex items-center gap-4 justify-self-center">
         <Image
           src="/logo-evacuation.png"
           alt="Adair Evacuation Consultants"
@@ -27,7 +28,7 @@ export default function UserBar() {
           className="h-8 w-auto object-contain"
         />
       </div>
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-3 min-w-0 justify-self-end">
         <span className="truncate min-w-0">{session.user?.email}</span>
         <button
           onClick={() => signOut({ callbackUrl: '/login' })}
