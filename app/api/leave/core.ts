@@ -18,16 +18,12 @@ export const TEAM = [
 export type PublicHoliday = { date: string; name: string };
 
 function phCacheFile(year: number) {
-  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-public-holidays-nsw-${year}.json`);
+  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-public-holidays-nsw-v2-${year}.json`);
 }
 
-function getNSWBankHoliday(year: number): string {
-  const aug1 = new Date(year, 7, 1);
-  const day  = aug1.getDay();
-  const diff = day === 1 ? 0 : day === 0 ? 1 : 8 - day;
-  return `${year}-08-${String(1 + diff).padStart(2, "0")}`;
-}
-
+// The NSW Bank Holiday (first Monday of August) is a bank/financial-sector
+// holiday only — not observed as a public holiday for this business, so it's
+// deliberately excluded from both the live-fetched and fallback holiday lists.
 export async function fetchNSWPublicHolidays(year: number): Promise<PublicHoliday[]> {
   try {
     const raw = await fs.readFile(phCacheFile(year), "utf-8");
@@ -40,9 +36,8 @@ export async function fetchNSWPublicHolidays(year: number): Promise<PublicHolida
     const data = await r.json() as Array<{ date: string; name: string; global: boolean; counties: string[] | null }>;
     const holidays: PublicHoliday[] = data
       .filter(h => h.global || h.counties?.includes("AU-NSW"))
+      .filter(h => h.name !== "Bank Holiday")
       .map(h => ({ date: h.date, name: h.name }));
-    const bankHol = getNSWBankHoliday(year);
-    if (!holidays.some(h => h.date === bankHol)) holidays.push({ date: bankHol, name: "Bank Holiday" });
     holidays.sort((a, b) => a.date.localeCompare(b.date));
     await fs.writeFile(phCacheFile(year), JSON.stringify(holidays), "utf-8").catch(() => {});
     return holidays;
@@ -60,7 +55,6 @@ const FALLBACK_HOLIDAYS: Record<number, PublicHoliday[]> = {
     { date: "2025-04-21", name: "Easter Monday" },
     { date: "2025-04-25", name: "ANZAC Day" },
     { date: "2025-06-09", name: "King's Birthday" },
-    { date: "2025-08-04", name: "Bank Holiday" },
     { date: "2025-10-06", name: "Labour Day" },
     { date: "2025-12-25", name: "Christmas Day" },
     { date: "2025-12-26", name: "Boxing Day" },
@@ -73,7 +67,6 @@ const FALLBACK_HOLIDAYS: Record<number, PublicHoliday[]> = {
     { date: "2026-04-06", name: "Easter Monday" },
     { date: "2026-04-27", name: "ANZAC Day" },
     { date: "2026-06-08", name: "King's Birthday" },
-    { date: "2026-08-03", name: "Bank Holiday" },
     { date: "2026-10-05", name: "Labour Day" },
     { date: "2026-12-25", name: "Christmas Day" },
     { date: "2026-12-28", name: "Boxing Day" },
@@ -86,7 +79,6 @@ const FALLBACK_HOLIDAYS: Record<number, PublicHoliday[]> = {
     { date: "2027-03-29", name: "Easter Monday" },
     { date: "2027-04-26", name: "ANZAC Day" },
     { date: "2027-06-14", name: "King's Birthday" },
-    { date: "2027-08-02", name: "Bank Holiday" },
     { date: "2027-10-04", name: "Labour Day" },
     { date: "2027-12-27", name: "Christmas Day" },
     { date: "2027-12-28", name: "Boxing Day" },
