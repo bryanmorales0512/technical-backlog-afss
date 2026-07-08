@@ -10,7 +10,7 @@ export default function UserBar() {
   if (!session || pathname === '/login') return null
 
   return (
-    <div className="flex items-center justify-between gap-3 px-4 py-1.5 bg-gray-900 border-b border-gray-800 text-xs text-gray-400 min-w-0">
+    <div className="flex items-center justify-between gap-3 px-4 py-1.5 bg-white border-b border-gray-200 text-xs text-gray-500 min-w-0">
       <div className="flex items-center gap-4">
         <Image
           src="/logo-evacuation.png"
@@ -31,7 +31,7 @@ export default function UserBar() {
         <span className="truncate min-w-0">{session.user?.email}</span>
         <button
           onClick={() => signOut({ callbackUrl: '/login' })}
-          className="text-gray-500 hover:text-white transition-colors cursor-pointer"
+          className="text-gray-500 hover:text-gray-900 transition-colors cursor-pointer"
         >
           Sign out
         </button>
