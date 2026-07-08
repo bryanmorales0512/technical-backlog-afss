@@ -18,10 +18,10 @@ const COMPANIES = [
 ] as const;
 
 const STATUS_ROWS = [
-  { key: "scheduled", label: "Scheduled Awaiting to be Done",             bg: "#16a34a", color: "#fff" },
+  { key: "scheduled", label: "Scheduled Awaiting to be Done",             bg: "#166534", color: "#fff" },
   { key: "awaiting",  label: "Awaiting Client Info",                       bg: "#2563eb", color: "#fff" },
-  { key: "tentative", label: "Tentative Awaiting Scheduling",              bg: "#ca8a04", color: "#000" },
-  { key: "complete",  label: "Attendance Complete/Results To Be Released",  bg: "#94a3b8", color: "#000" },
+  { key: "tentative", label: "Tentative Awaiting Scheduling",              bg: "#92400e", color: "#fff" },
+  { key: "complete",  label: "Attendance Complete/Results To Be Released",  bg: "#64748b", color: "#fff" },
 ] as const;
 
 function s(v: unknown): string {
@@ -740,7 +740,7 @@ export default function Dashboard2Page() {
               <td
                 rowSpan={3}
                 className="border border-gray-400 p-4 text-center align-middle font-bold text-xl"
-                style={{ backgroundColor: "#c4b5fd", width: "14%" }}
+                style={{ backgroundColor: "#1e293b", color: "#fff", width: "14%" }}
               >
                 TECH TEAM WORKS
               </td>
@@ -748,11 +748,11 @@ export default function Dashboard2Page() {
                 colSpan={3}
                 rowSpan={2}
                 className="border border-gray-400 px-3 py-4 text-center text-sm font-medium"
-                style={{ backgroundColor: "#c4b5fd", width: "21%" }}
+                style={{ backgroundColor: "#1e293b", color: "#fff", width: "21%" }}
               >
                 Work Demand (Total)
               </td>
-              <td colSpan={9} className="border border-gray-400 px-3 py-3 text-center font-bold text-base bg-white">
+              <td colSpan={9} className="border border-gray-400 px-3 py-3 text-center font-bold text-base bg-slate-800 text-white">
                 AFSS AUDITS
               </td>
             </tr>
@@ -763,7 +763,7 @@ export default function Dashboard2Page() {
                   key={co.id}
                   colSpan={3}
                   className="border border-gray-400 px-2 py-3 text-center text-sm font-semibold whitespace-pre-line"
-                  style={{ backgroundColor: i === 0 ? "#c4b5fd" : "#f0abfc", width: "21%" }}
+                  style={{ backgroundColor: "#1e293b", color: "#fff", width: "21%" }}
                 >
                   {co.label}
                 </td>
@@ -797,7 +797,7 @@ export default function Dashboard2Page() {
                 <tr>
                   <td
                     className="border border-gray-400 px-3 py-3 text-sm font-bold italic"
-                    style={{ backgroundColor: "#ede9fe" }}
+                    style={{ backgroundColor: "#f1f5f9" }}
                   >
                     Total Backlog as at end of period
                   </td>
@@ -810,7 +810,7 @@ export default function Dashboard2Page() {
                   <td
                     colSpan={13}
                     className="border border-gray-400 px-2 py-1 text-center text-sm italic text-gray-500"
-                    style={{ backgroundColor: "#ede9fe" }}
+                    style={{ backgroundColor: "#f1f5f9" }}
                   >
                     {monthFilter !== "all" ? (monthOptions.find(o => o.value === monthFilter)?.label ?? "All Companies") : "All Companies"}
                   </td>
@@ -859,26 +859,26 @@ export default function Dashboard2Page() {
             <table className="border-collapse text-sm w-full xl:w-[520px]">
               <thead>
                 <tr>
-                  <td rowSpan={2} className="border border-gray-400 px-3 py-3 font-bold text-base text-center align-middle" style={{ backgroundColor: "#c4b5fd", width: 160 }}>
+                  <td rowSpan={2} className="border border-gray-400 px-3 py-3 font-bold text-base text-center align-middle" style={{ backgroundColor: "#1e293b", color: "#fff", width: 160 }}>
                     Technical Team Supply
                   </td>
-                  <td colSpan={isFutureMonthFilter ? 4 : 3} className="border border-gray-400 px-3 py-1 text-center font-semibold text-xs" style={{ backgroundColor: "#d8b4fe" }}>
+                  <td colSpan={isFutureMonthFilter ? 4 : 3} className="border border-gray-400 px-3 py-1 text-center font-semibold text-xs" style={{ backgroundColor: "#475569", color: "#fff" }}>
                     END OF PERIOD GENERATED
                   </td>
                 </tr>
                 <tr>
-                  <td colSpan={isFutureMonthFilter ? 4 : 3} className="border border-gray-400 px-3 py-2 text-center font-bold text-base" style={{ backgroundColor: "#a855f7", color: "#fff" }}>
+                  <td colSpan={isFutureMonthFilter ? 4 : 3} className="border border-gray-400 px-3 py-2 text-center font-bold text-base" style={{ backgroundColor: "#1e293b", color: "#fff" }}>
                     {supplyMonthDate.toLocaleString("en-AU", { month: "long" })}
                   </td>
                 </tr>
                 <tr>
-                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe" }}>APFS / AUDITOR</th>
+                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9" }}>APFS / AUDITOR</th>
                   {isFutureMonthFilter && (
-                    <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe", width: 70 }}>{now.toLocaleString("en-AU", { month: "short" })}</th>
+                    <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 70 }}>{now.toLocaleString("en-AU", { month: "short" })}</th>
                   )}
-                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe", width: 70 }}>{supplyMonthDate.toLocaleString("en-AU", { month: "short" })}</th>
-                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe", width: 100 }}>Total Supply Hours</th>
-                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe", width: 190 }}>Roles</th>
+                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 70 }}>{supplyMonthDate.toLocaleString("en-AU", { month: "short" })}</th>
+                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 100 }}>Total Supply Hours</th>
+                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 190 }}>Roles</th>
                 </tr>
               </thead>
               <tbody>
@@ -916,7 +916,7 @@ export default function Dashboard2Page() {
                   const netHrs     = Math.max(0, getMonthHours(member) - leaveDays * 8);
                   const onLeaveNow = isOnLeaveToday(member, now);
                   return (
-                    <tr key={member.id} style={{ backgroundColor: "#f0fdf4" }}>
+                    <tr key={member.id} style={{ backgroundColor: "#eef2f6" }}>
                       <td className="border border-gray-400 px-3 py-2 text-center text-sm">
                         <span className="flex items-center justify-center gap-1">
                           {member.name}
@@ -957,22 +957,22 @@ export default function Dashboard2Page() {
 
                 {/* Total row (includes extra members) */}
                 <tr className="font-bold">
-                  <td className="border border-gray-400 px-3 py-2" style={{ backgroundColor: "#ede9fe" }} />
+                  <td className="border border-gray-400 px-3 py-2" style={{ backgroundColor: "#f1f5f9" }} />
                   {isFutureMonthFilter && (
-                    <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#ede9fe" }}>
+                    <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#f1f5f9" }}>
                       {[...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + m.monthlyHours, 0)}
                     </td>
                   )}
-                  <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#ede9fe" }}>
+                  <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#f1f5f9" }}>
                     {[...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + Math.max(0, getMonthHours(m) - remainingLeaveDays(m, supplyMonthDate) * 8), 0) - publicHolidays.length * 8}
                   </td>
-                  <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#ede9fe" }}>
+                  <td className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#f1f5f9" }}>
                     {isFutureMonthFilter
                       ? [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + m.monthlyHours + getMonthHours(m), 0) - publicHolidays.length * 8
                       : [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + getMonthHours(m), 0) - publicHolidays.length * 8
                     }
                   </td>
-                  <td className="border border-gray-400 px-2 py-2" style={{ backgroundColor: "#ede9fe" }} />
+                  <td className="border border-gray-400 px-2 py-2" style={{ backgroundColor: "#f1f5f9" }} />
                 </tr>
 
                 {/* Add Member UI */}
@@ -1086,7 +1086,7 @@ export default function Dashboard2Page() {
                   {icSaving ? "Saving…" : icSaved ? "Saved ✓" : "Save"}
                 </button>
               </div>
-              <div className="border border-gray-400 px-3 py-2 mb-2 text-xs text-center" style={{ backgroundColor: "#fca5a5" }}>
+              <div className="border border-gray-400 px-3 py-2 mb-2 text-xs text-center italic text-slate-600" style={{ backgroundColor: "#f1f5f9" }}>
                 this is time assigned to RM or Adair for them to schedule tech team resources at their pleasure ($100 hour)
               </div>
               <table className="border-collapse text-sm w-full">
@@ -1146,29 +1146,29 @@ export default function Dashboard2Page() {
             <table className="border-collapse w-full text-sm" style={{ minWidth: '600px' }}>
               <thead>
                 <tr>
-                  <td colSpan={9} className="border border-gray-400 px-3 py-3 text-center font-bold text-base bg-white">
+                  <td colSpan={9} className="border border-gray-400 px-3 py-3 text-center font-bold text-base bg-slate-800 text-white">
                     TECHNICAL SUPPORT WORKS
                   </td>
                 </tr>
                 <tr>
-                  <td colSpan={3} className="border border-gray-400 px-2 py-3 text-center text-xs font-bold align-top" style={{ backgroundColor: "#c4b5fd" }}>
+                  <td colSpan={3} className="border border-gray-400 px-2 py-3 text-center text-xs font-bold align-top" style={{ backgroundColor: "#1e293b", color: "#fff" }}>
                     OTHER BILLABLE WORK SCHEDULED TO TECH TEAMS (100 Per Hour)
                     <div className="font-normal mt-1">(RM JOBS / DRAFTING JOBS / BILLABLE ESTIMATION)</div>
                   </td>
-                  <td colSpan={3} className="border border-gray-400 px-2 py-3 text-center text-xs font-bold align-top" style={{ backgroundColor: "#c4b5fd" }}>
+                  <td colSpan={3} className="border border-gray-400 px-2 py-3 text-center text-xs font-bold align-top" style={{ backgroundColor: "#1e293b", color: "#fff" }}>
                     INVESTED TIME (100 Per Hour)
                     <div className="font-normal mt-1">(TRAINING / COURSES, Non Billable Assigned And Nil Charge Estimates to Tech Team)</div>
                   </td>
-                  <td colSpan={3} className="border border-gray-400 px-2 py-3 text-center text-xs font-bold align-top" style={{ backgroundColor: "#f0abfc" }}>
+                  <td colSpan={3} className="border border-gray-400 px-2 py-3 text-center text-xs font-bold align-top" style={{ backgroundColor: "#1e293b", color: "#fff" }}>
                     Quality Assurance — Overall Total of Jobs in SimPRO (100 Per Hour)
                   </td>
                 </tr>
                 <tr>
                   {[0, 1, 2].map(g => (
                     <React.Fragment key={g}>
-                      <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe" }}># of Jobs</th>
-                      <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe" }}>Sum of Est. Hrs</th>
-                      <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#ede9fe" }}>Amount</th>
+                      <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9" }}># of Jobs</th>
+                      <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9" }}>Sum of Est. Hrs</th>
+                      <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9" }}>Amount</th>
                     </React.Fragment>
                   ))}
                 </tr>
@@ -1217,7 +1217,7 @@ export default function Dashboard2Page() {
               const fmtV = (n: number) => n.toFixed(2);
               const excessStyle = { backgroundColor: "#e9d5ff" };
               const supplyStyle = { backgroundColor: "#fef08a" };
-              const overallHeaderStyle = { backgroundColor: "#86efac" };
+              const overallHeaderStyle = { backgroundColor: "#1e293b", color: "#fff" };
               const varianceStyle = { backgroundColor: "#fde68a" };
               return (
                 <div className="flex flex-col gap-4">
@@ -1226,7 +1226,7 @@ export default function Dashboard2Page() {
                   <table className="border-collapse text-sm flex-1">
                     <thead>
                       <tr>
-                        <td colSpan={2} className="border border-gray-400 px-3 py-2 text-center font-bold text-sm" style={{ backgroundColor: "#fca5a5" }}>
+                        <td colSpan={2} className="border border-gray-400 px-3 py-2 text-center font-bold text-sm" style={{ backgroundColor: "#1e293b", color: "#fff" }}>
                           AFSS Audits<br />SUPPLY VS DEMAND
                         </td>
                       </tr>
@@ -1254,7 +1254,7 @@ export default function Dashboard2Page() {
                   <table className="border-collapse text-sm flex-1">
                     <thead>
                       <tr>
-                        <td colSpan={2} className="border border-gray-400 px-3 py-2 text-center font-bold text-sm" style={{ backgroundColor: "#c4b5fd" }}>
+                        <td colSpan={2} className="border border-gray-400 px-3 py-2 text-center font-bold text-sm" style={{ backgroundColor: "#1e293b", color: "#fff" }}>
                           Technical Works + Prospect Demand<br />SUPPLY VS DEMAND
                         </td>
                       </tr>
@@ -1285,14 +1285,14 @@ export default function Dashboard2Page() {
                 <table className="border-collapse text-sm flex-1">
                   <thead>
                     <tr>
-                      <td colSpan={3} className="border border-gray-400 px-3 py-2 text-center font-bold text-sm" style={{ backgroundColor: "#67e8f9" }}>
+                      <td colSpan={3} className="border border-gray-400 px-3 py-2 text-center font-bold text-sm" style={{ backgroundColor: "#1e293b", color: "#fff" }}>
                         AFAC Prospect Demand<br /><span className="font-normal text-xs">NOT YET WON BUT ASSUMED WILL BE NEEDED</span>
                       </td>
                     </tr>
                     <tr>
-                      <th className="border border-gray-400 px-3 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#e0f2fe" }}># of Jobs</th>
-                      <th className="border border-gray-400 px-3 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#e0f2fe" }}>Sum of Est. Hrs</th>
-                      <th className="border border-gray-400 px-3 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#e0f2fe" }}>Amount</th>
+                      <th className="border border-gray-400 px-3 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9" }}># of Jobs</th>
+                      <th className="border border-gray-400 px-3 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9" }}>Sum of Est. Hrs</th>
+                      <th className="border border-gray-400 px-3 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9" }}>Amount</th>
                     </tr>
                   </thead>
                   <tbody>
