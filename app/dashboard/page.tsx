@@ -906,18 +906,18 @@ export default function DashboardPage() {
           {/* Technical Team Supply */}
           <div className="w-full xl:w-auto xl:shrink-0">
             {team.length > 0 ? (<>
-            <table className="border-collapse text-sm w-full xl:w-[520px]">
+            <table className="border-collapse text-sm w-full" style={{ maxWidth: 140 + supplyMonths.length * 52 + 92 + 170 + 24 }}>
               <thead>
                 <tr>
-                  <td rowSpan={2} className="border border-gray-400 px-3 py-3 font-bold text-base text-center align-middle" style={{ backgroundColor: "#1e293b", color: "#fff", width: 160 }}>
+                  <td rowSpan={2} className="border border-gray-400 px-3 py-3 font-bold text-base text-center align-middle" style={{ backgroundColor: "#1e293b", color: "#fff", width: 140 }}>
                     Technical Team Supply
                   </td>
-                  <td colSpan={supplyMonths.length + 1} className="border border-gray-400 px-3 py-1 text-center font-semibold text-xs" style={{ backgroundColor: "#475569", color: "#fff" }}>
+                  <td colSpan={supplyMonths.length + 2} className="border border-gray-400 px-3 py-1 text-center font-semibold text-xs" style={{ backgroundColor: "#475569", color: "#fff" }}>
                     END OF PERIOD GENERATED
                   </td>
                 </tr>
                 <tr>
-                  <td colSpan={supplyMonths.length + 1} className="border border-gray-400 px-3 py-2 text-center font-bold text-base" style={{ backgroundColor: "#1e293b", color: "#fff" }}>
+                  <td colSpan={supplyMonths.length + 2} className="border border-gray-400 px-3 py-2 text-center font-bold text-base" style={{ backgroundColor: "#1e293b", color: "#fff" }}>
                     {supplyMonths.length > 1
                       ? `${new Date(supplyMonths[0].year, supplyMonths[0].month - 1, 1).toLocaleString("en-AU", { month: "long" })} – ${new Date(supplyMonths[supplyMonths.length - 1].year, supplyMonths[supplyMonths.length - 1].month - 1, 1).toLocaleString("en-AU", { month: "long" })}`
                       : supplyMonthDate.toLocaleString("en-AU", { month: "long" })}
@@ -926,12 +926,12 @@ export default function DashboardPage() {
                 <tr>
                   <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9" }}>APFS / AUDITOR</th>
                   {supplyMonths.map(({ year, month }) => (
-                    <th key={`${year}-${month}`} className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 70 }}>
+                    <th key={`${year}-${month}`} className="border border-gray-400 px-1.5 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 52 }}>
                       {new Date(year, month - 1, 1).toLocaleString("en-AU", { month: "short" })}
                     </th>
                   ))}
-                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 100 }}>Total Supply Hours</th>
-                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 190 }}>Roles</th>
+                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 92 }}>Total Supply Hours</th>
+                  <th className="border border-gray-400 px-2 py-2 text-center text-xs font-semibold" style={{ backgroundColor: "#f1f5f9", width: 170 }}>Roles</th>
                 </tr>
               </thead>
               <tbody>
@@ -957,7 +957,7 @@ export default function DashboardPage() {
                         </span>
                       </td>
                       {monthVals.map((v, i) => (
-                        <td key={i} className="border border-gray-400 px-2 py-2 text-center text-sm">{v}</td>
+                        <td key={i} className="border border-gray-400 px-1.5 py-2 text-center text-sm">{v}</td>
                       ))}
                       <td className="border border-gray-400 px-2 py-2 text-center text-sm">{monthVals.reduce((s, v) => s + v, 0)}</td>
                       <td className="border border-gray-400 px-2 py-2 text-center text-xs">{member.role}</td>
@@ -988,7 +988,7 @@ export default function DashboardPage() {
                         </span>
                       </td>
                       {monthVals.map((v, i) => (
-                        <td key={i} className="border border-gray-400 px-2 py-2 text-center text-sm">{v}</td>
+                        <td key={i} className="border border-gray-400 px-1.5 py-2 text-center text-sm">{v}</td>
                       ))}
                       <td className="border border-gray-400 px-2 py-2 text-center text-sm">{monthVals.reduce((s, v) => s + v, 0)}</td>
                       <td className="border border-gray-400 px-2 py-2 text-center text-xs">{member.role}</td>
@@ -1005,7 +1005,7 @@ export default function DashboardPage() {
                       const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
                       const h = isCurrent ? [] : holidaysFor(year, month);
                       return (
-                        <td key={`${year}-${month}`} className="border border-gray-400 px-2 py-1 text-center text-xs text-red-600">
+                        <td key={`${year}-${month}`} className="border border-gray-400 px-1.5 py-1 text-center text-xs text-red-600">
                           {h.length > 0 ? `−${h.length * 8}` : ""}
                         </td>
                       );
@@ -1039,7 +1039,7 @@ export default function DashboardPage() {
                       return s + Math.max(0, monthSupplyHours(m, year, month) - leaveDays * 8);
                     }, 0);
                     return (
-                      <td key={`${year}-${month}`} className="border border-gray-400 px-2 py-2 text-center" style={{ backgroundColor: "#f1f5f9" }}>
+                      <td key={`${year}-${month}`} className="border border-gray-400 px-1.5 py-2 text-center" style={{ backgroundColor: "#f1f5f9" }}>
                         {colTotal}
                       </td>
                     );
