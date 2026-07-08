@@ -630,6 +630,7 @@ export default function Dashboard2Page() {
     }
     const [fy, fm] = monthFilter.split("-").map(Number);
     const isFutureMonth = fy > now.getFullYear() || (fy === now.getFullYear() && fm > now.getMonth() + 1);
+    const isPastMonth   = fy < now.getFullYear() || (fy === now.getFullYear() && fm < now.getMonth() + 1);
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const monthEndStr = `${fy}-${String(fm).padStart(2, "0")}-${String(new Date(fy, fm, 0).getDate()).padStart(2, "0")}`;
     return jobs.filter(j => {
@@ -638,6 +639,11 @@ export default function Dashboard2Page() {
 
       const sched = j._scheduledDate as string | null;
       if (sched) {
+        // RM AFSS (company 1): scheduled jobs always use today -> end of
+        // month for the current/future month, so already-past scheduled
+        // days don't inflate this month's Sum of Est. Hrs. Past months
+        // still show their whole month (there's no "today" to window from).
+        if ((j._company as number) === 1 && !isPastMonth) return sched >= todayStr && sched <= monthEndStr;
         if (isFutureMonth) return sched >= todayStr && sched <= monthEndStr;
         const dt = new Date(sched);
         return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
