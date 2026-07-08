@@ -650,12 +650,17 @@ export default function Dashboard2Page() {
       // Tentative jobs (no scheduled date):
       // No DueDate at all: always include, any company — nothing to judge it against.
       // CHUBB (company 8): always include all pending jobs regardless of DueDate.
-      // RM AFSS (company 1): exclude only if genuinely overdue (DueDate before
-      // today) — a far-future DueDate isn't wrong, only a past one is stale.
+      // RM AFSS (company 1): same bounded window as scheduled jobs above —
+      // DueDate must fall between today and end of month for the
+      // current/future month; past months show the whole month.
       // Others: include if DueDate >= today.
       if (!due) return true;
       if ((j._company as number) === 8) return true;
-      if ((j._company as number) === 1) return due >= todayStr;
+      if ((j._company as number) === 1) {
+        if (!isPastMonth) return due >= todayStr && due <= monthEndStr;
+        const dt = new Date(due);
+        return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
+      }
       if (isFutureMonth) return due >= todayStr;
       const dt = new Date(due);
       return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
