@@ -824,7 +824,6 @@ export default function DashboardPage() {
                     ? (j: RawJob) => { const sh = scheduledHrs(j); return sh > 0 ? sh : jobHours(j); }
                     : jobHours;
                   const rowFilter = (j: RawJob) => statusKey(j) === row.key;
-                  const all = visibleAll.filter(rowFilter);
                   const zero = { count: 0, hrs: 0, amt: 0 };
                   return (
                     <React.Fragment key={row.key}>
@@ -835,7 +834,7 @@ export default function DashboardPage() {
                         >
                           {row.label}
                         </td>
-                        <StatCells s={(() => { if (row.key === "complete") return zero; const base = agg(all, getHrs); if (row.key === "scheduled") return { count: base.count + (obData?.jobs ?? 0) + (itData?.jobs ?? 0), hrs: base.hrs + (obData?.hours ?? 0) + (itData?.hours ?? 0), amt: base.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) }; if (row.key === "tentative") return { count: base.count + (qaData?.jobs ?? 0) + (afacProspect?.jobs ?? 0), hrs: base.hrs + (qaData?.hours ?? 0) + (afacProspect?.hours ?? 0), amt: base.amt + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) }; return base; })()} />
+                        <StatCells s={(() => { if (row.key === "complete") return zero; const base = COMPANIES.reduce((acc, co) => { const coGetHrs = co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHoursRm : getHrs; const s = agg(visibleCo(co.id).filter(rowFilter), coGetHrs, co.id === 8 ? jobPriceAfac : jobPrice); return { count: acc.count + s.count, hrs: acc.hrs + s.hrs, amt: acc.amt + s.amt }; }, { count: 0, hrs: 0, amt: 0 }); if (row.key === "scheduled") return { count: base.count + (obData?.jobs ?? 0) + (itData?.jobs ?? 0), hrs: base.hrs + (obData?.hours ?? 0) + (itData?.hours ?? 0), amt: base.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) }; if (row.key === "tentative") return { count: base.count + (qaData?.jobs ?? 0) + (afacProspect?.jobs ?? 0), hrs: base.hrs + (qaData?.hours ?? 0) + (afacProspect?.hours ?? 0), amt: base.amt + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) }; return base; })()} />
                         {COMPANIES.map(co => {
                           const jobs = visibleCo(co.id).filter(rowFilter);
                           const coGetHrs = co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHoursRm : getHrs;
