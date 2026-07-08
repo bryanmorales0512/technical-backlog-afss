@@ -393,10 +393,11 @@ export default function BacklogPage() {
 
         {/* Dashboard dropdown */}
         <select
-          defaultValue="/dashboard"
-          onChange={e => { window.location.href = e.target.value; }}
+          defaultValue=""
+          onChange={e => { if (e.target.value) window.location.href = e.target.value; }}
           className="px-5 py-3 text-sm font-medium text-neutral-500 hover:text-neutral-800 border-b sm:border-b-0 sm:border-r border-neutral-200 hover:bg-neutral-50 bg-white cursor-pointer w-full sm:w-auto"
         >
+          <option value="" disabled hidden>Dashboard</option>
           <option value="/dashboard">Dashboard</option>
           <option value="/dashboard2">Dashboard (NO DATACOM)</option>
         </select>
