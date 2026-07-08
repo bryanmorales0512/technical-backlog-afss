@@ -18,7 +18,25 @@ export const TEAM = [
 export type PublicHoliday = { date: string; name: string };
 
 function phCacheFile(year: number) {
-  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-public-holidays-nsw-v2-${year}.json`);
+  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-public-holidays-nsw-v3-${year}.json`);
+}
+
+// The NSW gov public holidays page (nsw.gov.au/about-nsw/public-holidays)
+// lists a separate "Additional Day" row for New Year's/Christmas/Boxing Day
+// whenever the actual date falls on a weekend and a substitute Monday (or
+// Tuesday) is declared. Per business decision, that substitute day is not
+// observed as a public holiday here — only the literal calendar date counts,
+// even when it falls on a weekend (i.e. no weekday deduction that year).
+const CANONICAL_MMDD: Record<string, string> = {
+  "New Year's Day":   "01-01",
+  "Christmas Day":    "12-25",
+  "Boxing Day":       "12-26",
+  "St. Stephen's Day": "12-26", // nager.at's alternate name for Boxing Day
+};
+
+function isSubstituteDay(h: { date: string; name: string }): boolean {
+  const canonical = CANONICAL_MMDD[h.name];
+  return canonical != null && h.date.slice(5) !== canonical;
 }
 
 // The NSW Bank Holiday (first Monday of August) is a bank/financial-sector
@@ -37,6 +55,7 @@ export async function fetchNSWPublicHolidays(year: number): Promise<PublicHolida
     const holidays: PublicHoliday[] = data
       .filter(h => h.global || h.counties?.includes("AU-NSW"))
       .filter(h => h.name !== "Bank Holiday")
+      .filter(h => !isSubstituteDay(h))
       .map(h => ({ date: h.date, name: h.name }));
     holidays.sort((a, b) => a.date.localeCompare(b.date));
     await fs.writeFile(phCacheFile(year), JSON.stringify(holidays), "utf-8").catch(() => {});
@@ -69,7 +88,7 @@ const FALLBACK_HOLIDAYS: Record<number, PublicHoliday[]> = {
     { date: "2026-06-08", name: "King's Birthday" },
     { date: "2026-10-05", name: "Labour Day" },
     { date: "2026-12-25", name: "Christmas Day" },
-    { date: "2026-12-28", name: "Boxing Day" },
+    { date: "2026-12-26", name: "Boxing Day" },
   ],
   2027: [
     { date: "2027-01-01", name: "New Year's Day" },
@@ -80,8 +99,8 @@ const FALLBACK_HOLIDAYS: Record<number, PublicHoliday[]> = {
     { date: "2027-04-26", name: "ANZAC Day" },
     { date: "2027-06-14", name: "King's Birthday" },
     { date: "2027-10-04", name: "Labour Day" },
-    { date: "2027-12-27", name: "Christmas Day" },
-    { date: "2027-12-28", name: "Boxing Day" },
+    { date: "2027-12-25", name: "Christmas Day" },
+    { date: "2027-12-26", name: "Boxing Day" },
   ],
 };
 
