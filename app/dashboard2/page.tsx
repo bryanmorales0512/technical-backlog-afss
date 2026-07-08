@@ -649,10 +649,14 @@ export default function Dashboard2Page() {
         return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
       }
       // Tentative jobs (no scheduled date):
-      // CHUBB (company 8) and RM AFSS (company 1): always include all pending jobs —
-      // past-due still means outstanding work that needs to be completed.
+      // No DueDate at all: always include, any company — nothing to judge it against.
+      // CHUBB (company 8): always include all pending jobs regardless of DueDate.
+      // RM AFSS (company 1): exclude only if genuinely overdue (DueDate before
+      // today) — a far-future DueDate isn't wrong, only a past one is stale.
       // Others: include if DueDate >= today.
-      if (!due || (j._company as number) === 8 || (j._company as number) === 1) return true;
+      if (!due) return true;
+      if ((j._company as number) === 8) return true;
+      if ((j._company as number) === 1) return due >= todayStr;
       if (isFutureMonth) return due >= todayStr;
       const dt = new Date(due);
       return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
