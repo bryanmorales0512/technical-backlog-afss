@@ -639,12 +639,11 @@ export default function Dashboard2Page() {
 
       const sched = j._scheduledDate as string | null;
       if (sched) {
-        // RM AFSS (company 1): scheduled jobs always use today -> end of
-        // month for the current/future month, so already-past scheduled
-        // days don't inflate this month's Sum of Est. Hrs. Past months
-        // still show their whole month (there's no "today" to window from).
-        if ((j._company as number) === 1 && !isPastMonth) return sched >= todayStr && sched <= monthEndStr;
-        if (isFutureMonth) return sched >= todayStr && sched <= monthEndStr;
+        // Every company: scheduled jobs use today -> end of month for the
+        // current/future month, so already-past scheduled days don't
+        // inflate this month's Sum of Est. Hrs. Past months still show
+        // their whole month (there's no "today" to window from).
+        if (!isPastMonth) return sched >= todayStr && sched <= monthEndStr;
         const dt = new Date(sched);
         return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
       }
