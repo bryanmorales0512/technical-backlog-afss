@@ -152,6 +152,15 @@ function totalWorkingDaysInMonth(year: number, month: number): number {
   return hours;
 }
 
+function shutdownHoursInMonth(year: number, month: number): number {
+  const lastDay = new Date(year, month, 0);
+  let hours = 0;
+  for (let d = new Date(year, month - 1, 1); d <= lastDay; d.setDate(d.getDate() + 1)) {
+    if (d.getDay() !== 0 && d.getDay() !== 6 && isShutdownDay(d)) hours += 8;
+  }
+  return hours;
+}
+
 function leaveInMonth(member: TeamMember, now: Date): LeaveEntry[] {
   const y = now.getFullYear();
   const m = now.getMonth();
@@ -1028,13 +1037,15 @@ export default function Dashboard2Page() {
                 })}
 
                 {/* Public Holidays row — current month is blank here since its
-                    deduction is already baked into member.monthlyHours server-side */}
-                {supplyMonths.some(({ year, month }) => !(year === now.getFullYear() && month === now.getMonth() + 1) && holidaysFor(year, month).length > 0) && (
+                    deduction is already baked into member.monthlyHours server-side.
+                    Christmas/Boxing/New Year's are excluded here since they fall
+                    inside the Company Shutdown row below, which covers them instead. */}
+                {supplyMonths.some(({ year, month }) => !(year === now.getFullYear() && month === now.getMonth() + 1) && nonShutdownHolidays(holidaysFor(year, month)).length > 0) && (
                   <tr>
                     <td className="border border-gray-400 px-3 py-1 text-center text-xs font-semibold text-red-600">Public Holidays</td>
                     {supplyMonths.map(({ year, month }) => {
                       const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
-                      const h = isCurrent ? [] : holidaysFor(year, month);
+                      const h = isCurrent ? [] : nonShutdownHolidays(holidaysFor(year, month));
                       return (
                         <td key={`${year}-${month}`} className="border border-gray-400 px-1.5 py-1 text-center text-xs text-red-600">
                           {h.length > 0 ? `−${h.length * 8}` : ""}
@@ -1044,17 +1055,43 @@ export default function Dashboard2Page() {
                     <td className="border border-gray-400 px-2 py-1 text-center text-xs text-red-600">
                       −{supplyMonths.reduce((s, { year, month }) => {
                         const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
-                        return s + (isCurrent ? 0 : holidaysFor(year, month).length * 8);
+                        return s + (isCurrent ? 0 : nonShutdownHolidays(holidaysFor(year, month)).length * 8);
                       }, 0)}
                     </td>
                     <td className="border border-gray-400 px-2 py-1 text-xs text-red-600">
                       {supplyMonths.flatMap(({ year, month }) => {
                         const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
-                        return isCurrent ? [] : holidaysFor(year, month).map(ph => {
+                        return isCurrent ? [] : nonShutdownHolidays(holidaysFor(year, month)).map(ph => {
                           const d = ph.date.split("-")[2];
                           return `${ph.name} (${parseInt(d)} ${new Date(year, month - 1, 1).toLocaleString("en-AU", { month: "short" })})`;
                         });
                       }).join(" · ")}
+                    </td>
+                  </tr>
+                )}
+
+                {/* Company Shutdown row — annual 18 Dec to 5 Jan closure, same
+                    current-month exclusion as Public Holidays above */}
+                {supplyMonths.some(({ year, month }) => !(year === now.getFullYear() && month === now.getMonth() + 1) && shutdownHoursInMonth(year, month) > 0) && (
+                  <tr>
+                    <td className="border border-gray-400 px-3 py-1 text-center text-xs font-semibold text-red-600">Company Shutdown</td>
+                    {supplyMonths.map(({ year, month }) => {
+                      const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
+                      const hrs = isCurrent ? 0 : shutdownHoursInMonth(year, month);
+                      return (
+                        <td key={`${year}-${month}`} className="border border-gray-400 px-1.5 py-1 text-center text-xs text-red-600">
+                          {hrs > 0 ? `−${hrs}` : ""}
+                        </td>
+                      );
+                    })}
+                    <td className="border border-gray-400 px-2 py-1 text-center text-xs text-red-600">
+                      −{supplyMonths.reduce((s, { year, month }) => {
+                        const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
+                        return s + (isCurrent ? 0 : shutdownHoursInMonth(year, month));
+                      }, 0)}
+                    </td>
+                    <td className="border border-gray-400 px-2 py-1 text-xs text-red-600">
+                      Company Shutdown (18 Dec – 5 Jan)
                     </td>
                   </tr>
                 )}
