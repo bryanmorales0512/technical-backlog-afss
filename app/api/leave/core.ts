@@ -110,6 +110,13 @@ export async function getMonthPublicHolidays(year: number, month: number): Promi
   return all.filter(ph => ph.date.startsWith(prefix));
 }
 
+// Office shuts down for the Christmas/New Year break every year, 18 Dec
+// through 5 Jan inclusive, regardless of the year — treated as non-working.
+function isShutdownDate(dateStr: string): boolean {
+  const [, m, d] = dateStr.split("-").map(Number);
+  return (m === 12 && d >= 18) || (m === 1 && d <= 5);
+}
+
 export function remainingWorkingDays(year: number, month: number, phDates: Set<string>): number {
   const aest      = new Date(Date.now() + 10 * 60 * 60 * 1000);
   const past3PM   = aest.getUTCHours() >= 15;
@@ -120,7 +127,7 @@ export function remainingWorkingDays(year: number, month: number, phDates: Set<s
   for (let d = new Date(startDate); d <= monthEnd; d.setDate(d.getDate() + 1)) {
     const day     = d.getDay();
     const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    if (day !== 0 && day !== 6 && !phDates.has(dateStr)) count++;
+    if (day !== 0 && day !== 6 && !phDates.has(dateStr) && !isShutdownDate(dateStr)) count++;
   }
   return count;
 }

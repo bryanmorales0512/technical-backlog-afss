@@ -115,11 +115,30 @@ function fmtAmt(n: number) {
   return `$ ${n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Office shuts down for the Christmas/New Year break every year, 18 Dec
+// through 5 Jan inclusive, regardless of the year — treated as non-working.
+function isShutdownDay(d: Date): boolean {
+  const month = d.getMonth() + 1, day = d.getDate();
+  return (month === 12 && day >= 18) || (month === 1 && day <= 5);
+}
+
+function isShutdownDate(dateStr: string): boolean {
+  const [, m, d] = dateStr.split("-").map(Number);
+  return (m === 12 && d >= 18) || (m === 1 && d <= 5);
+}
+
+// Public holidays already covered by the shutdown window (Christmas, Boxing
+// Day, New Year's Day) must not also be subtracted separately below, or
+// they'd be double-deducted.
+function nonShutdownHolidays(hols: PublicHoliday[]): PublicHoliday[] {
+  return hols.filter(h => !isShutdownDate(h.date));
+}
+
 function totalWorkingDaysInMonth(year: number, month: number): number {
   const lastDay = new Date(year, month, 0);
   let hours = 0;
   for (let d = new Date(year, month - 1, 1); d <= lastDay; d.setDate(d.getDate() + 1)) {
-    if (d.getDay() !== 0 && d.getDay() !== 6) hours += 8;
+    if (d.getDay() !== 0 && d.getDay() !== 6 && !isShutdownDay(d)) hours += 8;
   }
   return hours;
 }
@@ -717,8 +736,8 @@ export default function DashboardPage() {
     const [fy, fm] = monthFilter.split("-").map(Number);
     if (fy === now.getFullYear() && fm === now.getMonth() + 1) return member.monthlyHours;
     const isFuture = fy > now.getFullYear() || (fy === now.getFullYear() && fm > now.getMonth() + 1);
-    if (isFuture) return totalWorkingDaysInMonth(fy, fm) - publicHolidays.length * 8;
-    return totalWorkingDaysInMonth(fy, fm) - publicHolidays.length * 8;
+    if (isFuture) return totalWorkingDaysInMonth(fy, fm) - nonShutdownHolidays(publicHolidays).length * 8;
+    return totalWorkingDaysInMonth(fy, fm) - nonShutdownHolidays(publicHolidays).length * 8;
   };
 
   // Every month from now through the selected month (inclusive) — drives
@@ -740,7 +759,7 @@ export default function DashboardPage() {
     monthlyHolidays[`${year}-${String(month).padStart(2, "0")}`] ?? [];
   const monthSupplyHours = (member: TeamMember, year: number, month: number): number => {
     if (year === now.getFullYear() && month === now.getMonth() + 1) return member.monthlyHours;
-    return totalWorkingDaysInMonth(year, month) - holidaysFor(year, month).length * 8;
+    return totalWorkingDaysInMonth(year, month) - nonShutdownHolidays(holidaysFor(year, month)).length * 8;
   };
 
   const TH = ({ children }: { children: React.ReactNode }) => (
