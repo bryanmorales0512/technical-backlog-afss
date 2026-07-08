@@ -657,21 +657,16 @@ export default function DashboardPage() {
   const visibleAll  = filterJobs(allJobs);
   const visibleCo   = (id: number) => filterJobs(coJobs(id));
 
-  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const monthSet = new Set<string>();
-  for (const j of allJobs) {
-    const date = (j._scheduledDate || j.DueDate) as string | null;
-    if (date) {
-      const d = new Date(date);
-      if (!isNaN(d.getTime())) {
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        if (key >= currentMonthKey) monthSet.add(key);
-      }
-    }
+  // Fixed range (current month through December) rather than deriving from
+  // job dates — a month with no jobs yet should still be selectable, not
+  // silently missing from the dropdown.
+  const monthRange: string[] = [];
+  for (let m = now.getMonth() + 1; m <= 12; m++) {
+    monthRange.push(`${now.getFullYear()}-${String(m).padStart(2, "0")}`);
   }
   const monthOptions = [
     { value: "all", label: "All" },
-    ...[...monthSet].sort().slice(0, 3).map(val => {
+    ...monthRange.map(val => {
       const [y, m] = val.split("-").map(Number);
       const d = new Date(y, m - 1, 1);
       return { value: val, label: d.toLocaleString("en-AU", { month: "long", year: "numeric" }) };
