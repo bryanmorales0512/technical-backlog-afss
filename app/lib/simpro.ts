@@ -59,6 +59,12 @@ export async function writeCache(
   gcsWrite(GCS_KEY(company, stage), json); // persist to GCS for next deployment
 }
 
+// Force the next /api/data request for this company/stage to refetch from
+// SimPRO instead of serving the (possibly now-outdated) cached snapshot.
+export async function clearCache(company: number, stage: string): Promise<void> {
+  try { await fs.unlink(cacheFile(company, stage)); } catch { /* already gone */ }
+}
+
 // Read from GCS and mirror to the local file. Called during warmAll, and from
 // fetchAndCache's safety guards (slow path only) when the local cache is empty.
 async function readCacheFromGcs(company: number, stage: string): Promise<CacheEntry | null> {
