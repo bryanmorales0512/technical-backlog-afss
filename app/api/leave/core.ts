@@ -7,7 +7,18 @@ const BASE_URL = process.env.SIMPRO_BASE_URL;
 const TOKEN    = process.env.SIMPRO_TOKEN?.replace(/^﻿/, "").trim();
 const hdrs     = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
 
-const LEAVE_REFS = new Set(["1", "2"]);
+const LEAVE_REFS = new Set(["1", "2"]); // 1 = Annual Leave, 2 = Sick/Personal Leave
+
+// SimPRO's own "Public Holiday" activity — booked per staff member, Reference "6".
+// Confirmed against real schedule data (checked every 2026 NSW public holiday to
+// date): it's used inconsistently — e.g. King's Birthday 2026 wasn't booked for
+// any of the 3 tracked staff, and New Year's Day 2026 was booked under Reference
+// "1" instead. Because of that, this is tracked SEPARATELY from LEAVE_REFS and
+// unioned (not summed) with the org-wide NSW calendar in buildResponse below:
+// a date already in the calendar isn't double-subtracted just because SimPRO
+// also shows a booking for it, but a date SimPRO has booked that the calendar
+// missed (as happened with King's Birthday) still gets deducted.
+const PUBLIC_HOLIDAY_REF = "6";
 
 export const TEAM = [
   { id: 1581, name: "Muhammad Soban", role: "Primary APFS"                                        },
@@ -110,13 +121,6 @@ export async function getMonthPublicHolidays(year: number, month: number): Promi
   return all.filter(ph => ph.date.startsWith(prefix));
 }
 
-// Office shuts down for the Christmas/New Year break every year, 18 Dec
-// through 5 Jan inclusive, regardless of the year — treated as non-working.
-function isShutdownDate(dateStr: string): boolean {
-  const [, m, d] = dateStr.split("-").map(Number);
-  return (m === 12 && d >= 18) || (m === 1 && d <= 5);
-}
-
 export function remainingWorkingDays(year: number, month: number, phDates: Set<string>): number {
   const aest      = new Date(Date.now() + 10 * 60 * 60 * 1000);
   const past3PM   = aest.getUTCHours() >= 15;
@@ -127,7 +131,7 @@ export function remainingWorkingDays(year: number, month: number, phDates: Set<s
   for (let d = new Date(startDate); d <= monthEnd; d.setDate(d.getDate() + 1)) {
     const day     = d.getDay();
     const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    if (day !== 0 && day !== 6 && !phDates.has(dateStr) && !isShutdownDate(dateStr)) count++;
+    if (day !== 0 && day !== 6 && !phDates.has(dateStr)) count++;
   }
   return count;
 }
@@ -135,22 +139,34 @@ export function remainingWorkingDays(year: number, month: number, phDates: Set<s
 const TEAM_IDS = new Set<number>(TEAM.map(m => m.id));
 export const CACHE_TTL = 60 * 60_000;
 
-type LeaveCache = { data: Record<number, string[]>; ts: number };
+export type LeaveScanResult = {
+  leave: Record<number, string[]>;
+  publicHoliday: Record<number, string[]>;
+};
 
-export function cacheFile() {
-  return join((process.env.CACHE_DIR ?? os.tmpdir()), "afss-leave-cache.json");
+type LeaveCache = { data: LeaveScanResult; ts: number };
+
+// Cache is keyed per (year, month) so leave booked for a future month is
+// scanned and cached independently of whatever month is "real" today —
+// previously this was a single global file always scoped to today's month,
+// so leave filed for a future month was never scanned until that month arrived.
+export function cacheFile(year: number, month: number) {
+  const m = String(month).padStart(2, "0");
+  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-leave-cache-v2-${year}-${m}.json`);
 }
 
-const GCS_LEAVE_KEY = "afss-leave-cache.json";
-
-export async function readLeaveCache(): Promise<LeaveCache | null> {
-  try { return JSON.parse(await fs.readFile(cacheFile(), "utf-8")) as LeaveCache; } catch { return null; }
+function gcsLeaveKey(year: number, month: number): string {
+  return `afss-leave-cache-v2-${year}-${String(month).padStart(2, "0")}.json`;
 }
 
-export async function writeLeaveCache(data: Record<number, string[]>): Promise<void> {
+export async function readLeaveCache(year: number, month: number): Promise<LeaveCache | null> {
+  try { return JSON.parse(await fs.readFile(cacheFile(year, month), "utf-8")) as LeaveCache; } catch { return null; }
+}
+
+export async function writeLeaveCache(data: LeaveScanResult, year: number, month: number): Promise<void> {
   const json = JSON.stringify({ data, ts: Date.now() });
-  fs.writeFile(cacheFile(), json, "utf-8").catch(() => {});
-  gcsWrite(GCS_LEAVE_KEY, json);
+  fs.writeFile(cacheFile(year, month), json, "utf-8").catch(() => {});
+  gcsWrite(gcsLeaveKey(year, month), json);
 }
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
@@ -178,8 +194,9 @@ function isWeekday(date: Date): boolean {
   return day !== 0 && day !== 6;
 }
 
-export async function scanMonthLeave(year: number, month: number): Promise<Record<number, string[]>> {
+export async function scanMonthLeave(year: number, month: number): Promise<LeaveScanResult> {
   const leaveDays: Record<number, string[]> = { 1581: [], 15: [], 1753: [] };
+  const phDays:    Record<number, string[]> = { 1581: [], 15: [], 1753: [] };
   const daysInMonth = new Date(year, month, 0).getDate();
   const today       = new Date();
   const scanTo = Math.min(daysInMonth, year === today.getFullYear() && month === today.getMonth() + 1
@@ -198,13 +215,13 @@ export async function scanMonthLeave(year: number, month: number): Promise<Recor
     const dateStr = days[j];
     for (const block of results[j]) {
       const staffId = (block.Staff as Record<string, unknown>)?.ID as number;
-      const ref     = String(block.Reference ?? "");
-      if (TEAM_IDS.has(staffId) && block.Type === "activity" && LEAVE_REFS.has(ref)) {
-        leaveDays[staffId].push(dateStr);
-      }
+      if (!TEAM_IDS.has(staffId) || block.Type !== "activity") continue;
+      const ref = String(block.Reference ?? "");
+      if (LEAVE_REFS.has(ref)) leaveDays[staffId].push(dateStr);
+      else if (ref === PUBLIC_HOLIDAY_REF) phDays[staffId].push(dateStr);
     }
   }
-  return leaveDays;
+  return { leave: leaveDays, publicHoliday: phDays };
 }
 
 export function groupConsecutive(dates: string[]): { from: string; to: string }[] {
@@ -229,16 +246,23 @@ export function groupConsecutive(dates: string[]): { from: string; to: string }[
   return ranges;
 }
 
-export async function buildResponse(leaveDays: Record<number, string[]>, year: number, month: number) {
-  const monthPH     = await getMonthPublicHolidays(year, month);
-  const phDates     = new Set(monthPH.map(ph => ph.date));
-  const supplyHours = remainingWorkingDays(year, month, phDates) * 8;
+export async function buildResponse(scan: LeaveScanResult, year: number, month: number) {
+  const monthPH        = await getMonthPublicHolidays(year, month);
+  const calendarDates  = new Set(monthPH.map(ph => ph.date));
   return {
-    team: TEAM.map(m => ({
-      ...m,
-      monthlyHours: supplyHours,
-      leave: groupConsecutive(leaveDays[m.id] ?? []),
-    })),
+    // monthlyHours is computed per member (not once for the whole team) since
+    // each person's individual Public Holiday bookings can now add extra
+    // deducted dates beyond the shared calendar — see PUBLIC_HOLIDAY_REF above.
+    team: TEAM.map(m => {
+      const bookedDates = new Set(scan.publicHoliday[m.id] ?? []);
+      const phDates     = new Set([...calendarDates, ...bookedDates]);
+      return {
+        ...m,
+        monthlyHours: remainingWorkingDays(year, month, phDates) * 8,
+        leave: groupConsecutive(scan.leave[m.id] ?? []),
+        publicHolidayBookings: groupConsecutive(scan.publicHoliday[m.id] ?? []),
+      };
+    }),
     publicHolidays: monthPH,
   };
 }
@@ -248,6 +272,6 @@ export async function warmLeave(): Promise<void> {
   const year = aest.getUTCFullYear();
   const month = aest.getUTCMonth() + 1;
   await fetchNSWPublicHolidays(year);
-  const leaveDays = await scanMonthLeave(year, month);
-  await writeLeaveCache(leaveDays);
+  const scan = await scanMonthLeave(year, month);
+  await writeLeaveCache(scan, year, month);
 }

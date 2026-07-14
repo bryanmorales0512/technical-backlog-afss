@@ -126,13 +126,6 @@ async function scanLeave(
 
 // ── supply hours helpers ──────────────────────────────────────────────────────
 
-// Office shuts down for the Christmas/New Year break every year, 18 Dec
-// through 5 Jan inclusive, regardless of the year — treated as non-working.
-function isShutdownDay(d: Date): boolean {
-  const month = d.getMonth() + 1, day = d.getDate();
-  return (month === 12 && day >= 18) || (month === 1 && day <= 5);
-}
-
 function remainingWorkingDays(year: number, month: number): number {
   const now       = new Date();
   const past3PM   = now.getHours() >= 15;
@@ -140,7 +133,7 @@ function remainingWorkingDays(year: number, month: number): number {
   const monthEnd  = new Date(year, month, 0);
   let count = 0;
   for (let d = new Date(startDate); d <= monthEnd; d.setDate(d.getDate() + 1)) {
-    if (d.getDay() !== 0 && d.getDay() !== 6 && !isShutdownDay(d)) count++;
+    if (d.getDay() !== 0 && d.getDay() !== 6) count++;
   }
   return count;
 }
