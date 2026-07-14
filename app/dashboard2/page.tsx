@@ -7,7 +7,12 @@ import Link from "next/link";
 type RawJob = Record<string, unknown>;
 
 type LeaveEntry  = { from: string; to: string };
-type TeamMember  = { id: number; name: string; role: string; monthlyHours: number; leave: LeaveEntry[] };
+// publicHolidayBookings is visibility-only (SimPRO's own individual "Public
+// Holiday" activity bookings) — optional since extraTeam members (from
+// /api/extra-team) don't have it. Never used in an hours calculation: the
+// org-wide NSW public holiday calendar already deducts those hours for
+// everyone, so adding this too would double-subtract.
+type TeamMember  = { id: number; name: string; role: string; monthlyHours: number; leave: LeaveEntry[]; publicHolidayBookings?: LeaveEntry[] };
 type PublicHoliday = { date: string; name: string };
 type AfacProspect  = { jobs: number; hours: number; dateFrom: string; dateTo: string; costCentreFiltered: boolean };
 
@@ -40,16 +45,27 @@ function isDatacomJob(job: RawJob): boolean {
   return cg.includes("DATACOM") || name.includes("DATACOM") || tags.some(t => t.includes("DATACOM"));
 }
 
-function statusKey(job: RawJob): string {
+// todayStr is optional so call sites that don't care about the
+// scheduled/tentative split (isInAnyRow, hrsForJob) can keep calling this
+// with just a job.
+function statusKey(job: RawJob, todayStr?: string): string {
   const stage   = s(job.Stage).toLowerCase();
   const n       = s((job.Status as Record<string, unknown>)?.Name ?? job.Stage).toLowerCase();
   const company = job._company as number | undefined;
+  // Past due and still unscheduled: fold into "Scheduled Awaiting to be Done"
+  // rather than "Tentative Awaiting Scheduling" — these are overdue, not
+  // merely upcoming, so they belong with the jobs that need urgent action.
+  const isPastDueUnscheduled = !job._scheduledDate && !!todayStr
+    && (job.DueDate as string | null) != null && (job.DueDate as string) < todayStr;
   // AE Evac (company 10) Progress = audit booked/scheduled, not attendance complete
-  if (stage === "progress" && company === 10) return job._scheduledDate ? "scheduled" : "tentative";
+  if (stage === "progress" && company === 10) {
+    if (job._scheduledDate) return "scheduled";
+    return isPastDueUnscheduled ? "scheduled" : "tentative";
+  }
   // All other Progress = attendance already done
   if (stage === "progress" || n.includes("complete") || n.includes("released") || n.includes("attendance")) return "complete";
   if (job._scheduledDate) return "scheduled";
-  return "tentative";
+  return isPastDueUnscheduled ? "scheduled" : "tentative";
 }
 
 function jobPrice(job: RawJob): number {
@@ -124,39 +140,11 @@ function fmtAmt(n: number) {
   return `$ ${n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// Office shuts down for the Christmas/New Year break every year, 18 Dec
-// through 5 Jan inclusive, regardless of the year — treated as non-working.
-function isShutdownDay(d: Date): boolean {
-  const month = d.getMonth() + 1, day = d.getDate();
-  return (month === 12 && day >= 18) || (month === 1 && day <= 5);
-}
-
-function isShutdownDate(dateStr: string): boolean {
-  const [, m, d] = dateStr.split("-").map(Number);
-  return (m === 12 && d >= 18) || (m === 1 && d <= 5);
-}
-
-// Public holidays already covered by the shutdown window (Christmas, Boxing
-// Day, New Year's Day) must not also be subtracted separately below, or
-// they'd be double-deducted.
-function nonShutdownHolidays(hols: PublicHoliday[]): PublicHoliday[] {
-  return hols.filter(h => !isShutdownDate(h.date));
-}
-
 function totalWorkingDaysInMonth(year: number, month: number): number {
   const lastDay = new Date(year, month, 0);
   let hours = 0;
   for (let d = new Date(year, month - 1, 1); d <= lastDay; d.setDate(d.getDate() + 1)) {
-    if (d.getDay() !== 0 && d.getDay() !== 6 && !isShutdownDay(d)) hours += 8;
-  }
-  return hours;
-}
-
-function shutdownHoursInMonth(year: number, month: number): number {
-  const lastDay = new Date(year, month, 0);
-  let hours = 0;
-  for (let d = new Date(year, month - 1, 1); d <= lastDay; d.setDate(d.getDate() + 1)) {
-    if (d.getDay() !== 0 && d.getDay() !== 6 && isShutdownDay(d)) hours += 8;
+    if (d.getDay() !== 0 && d.getDay() !== 6) hours += 8;
   }
   return hours;
 }
@@ -193,6 +181,68 @@ function remainingLeaveDays(member: TeamMember, now: Date): number {
     }
   }
   return days;
+}
+
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function expandRange(from: string, to: string): string[] {
+  const out: string[] = [];
+  for (let d = new Date(from); d <= new Date(to); d.setDate(d.getDate() + 1)) out.push(ymd(d));
+  return out;
+}
+
+// Public holiday hours now auto-deduct straight from SimPRO's own individual
+// "Public Holiday" booking, not only from the org-wide NSW calendar — but a
+// date must only ever count once. Union the two sources per member instead
+// of summing them, so a date already covered by the calendar isn't
+// double-subtracted just because SimPRO also shows a booking for it; a date
+// SimPRO has booked that the calendar missed (as happened with King's
+// Birthday 2026 for this team) still gets deducted via the booking.
+function unionHolidayCount(calendar: PublicHoliday[], bookedRanges: LeaveEntry[]): number {
+  const dates = new Set(calendar.map(h => h.date));
+  for (const r of bookedRanges) for (const d of expandRange(r.from, r.to)) dates.add(d);
+  return dates.size;
+}
+
+// Same clipping as remainingLeaveDays above, but returns the clipped ranges
+// themselves so the Staff Leave row's legend always agrees with the hour
+// totals baked into each person's supply column.
+function clipEntriesToMonth(entries: LeaveEntry[], ref: Date): LeaveEntry[] {
+  const tomorrow = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  const monthEnd = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+  const out: LeaveEntry[] = [];
+  for (const l of entries) {
+    const from = new Date(Math.max(new Date(l.from).getTime(), tomorrow.getTime()));
+    const to   = new Date(Math.min(new Date(l.to).getTime(),   monthEnd.getTime()));
+    if (from > to) continue;
+    out.push({ from: ymd(from), to: ymd(to) });
+  }
+  return out;
+}
+
+function remainingLeaveEntriesInMonth(member: TeamMember, ref: Date): LeaveEntry[] {
+  return clipEntriesToMonth(member.leave, ref);
+}
+
+// SimPRO's own individually-booked "Public Holiday" activity — visibility
+// only, see the matching comment in app/api/leave/core.ts for why this never
+// contributes to leaveHoursInMonth/the numeric supply subtraction below: the
+// org-wide NSW public holiday calendar already deducts these hours for every
+// staff member, so adding this too would double-subtract.
+function remainingPublicHolidayEntriesInMonth(member: TeamMember, ref: Date): LeaveEntry[] {
+  return clipEntriesToMonth(member.publicHolidayBookings ?? [], ref);
+}
+
+function leaveHoursInMonth(member: TeamMember, ref: Date): number {
+  let days = 0;
+  for (const { from, to } of remainingLeaveEntriesInMonth(member, ref)) {
+    for (let d = new Date(from); d <= new Date(to); d.setDate(d.getDate() + 1)) {
+      if (d.getDay() !== 0 && d.getDay() !== 6) days++;
+    }
+  }
+  return days * 8;
 }
 
 
@@ -396,6 +446,45 @@ export default function Dashboard2Page() {
         }
       }
       else setTeam(d); // backward compat
+    }).catch(() => {});
+  }
+
+  // /api/leave only ever scans the real current month by default — leave
+  // already booked for a future month needs an explicit year/month request
+  // or it silently never gets scanned until that month arrives. This fetches
+  // every future month currently on screen and merges its leave entries into
+  // the existing team state (monthlyHours is left untouched — only trusted
+  // for the real current month elsewhere in this file).
+  function mergeEntries(existing: LeaveEntry[], incoming: LeaveEntry[]): LeaveEntry[] {
+    const seen = new Set(existing.map(l => `${l.from}|${l.to}`));
+    const merged = [...existing];
+    for (const l of incoming) {
+      const key = `${l.from}|${l.to}`;
+      if (!seen.has(key)) { seen.add(key); merged.push(l); }
+    }
+    return merged;
+  }
+
+  function loadExtraLeaveMonths(months: { year: number; month: number }[]) {
+    const toFetch = months.filter(({ year, month }) => !(year === now.getFullYear() && month === now.getMonth() + 1));
+    if (toFetch.length === 0) return;
+    Promise.all(
+      toFetch.map(({ year, month }) =>
+        fetch(`/api/leave?year=${year}&month=${month}`).then(r => r.json()).catch(() => null)
+      )
+    ).then(results => {
+      setTeam(prev => prev.map(member => {
+        let leave = member.leave;
+        let ph    = member.publicHolidayBookings ?? [];
+        for (const res of results) {
+          const m = (res?.team as TeamMember[] | undefined)?.find(x => x.id === member.id);
+          if (!m) continue;
+          leave = mergeEntries(leave, m.leave ?? []);
+          ph    = mergeEntries(ph,    m.publicHolidayBookings ?? []);
+        }
+        const changed = leave.length !== member.leave.length || ph.length !== (member.publicHolidayBookings ?? []).length;
+        return changed ? { ...member, leave, publicHolidayBookings: ph } : member;
+      }));
     }).catch(() => {});
   }
 
@@ -647,6 +736,22 @@ export default function Dashboard2Page() {
     return () => { cancelled = true; };
   }, [monthFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Same month range as above, but for staff leave — so leave already booked
+  // for a future month shows up on this page before that month becomes
+  // "current". team.length is included so this retries once the initial
+  // loadLeave() call (which races this effect on mount) has populated team.
+  useEffect(() => {
+    if (monthFilter === "all") return;
+    const [fy, fm] = monthFilter.split("-").map(Number);
+    const months: { year: number; month: number }[] = [];
+    let y = now.getFullYear(), m = now.getMonth() + 1;
+    while (y < fy || (y === fy && m <= fm)) {
+      months.push({ year: y, month: m });
+      m++; if (m > 12) { m = 1; y++; }
+    }
+    loadExtraLeaveMonths(months); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [monthFilter, team.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Cold-start recovery: if tech-support data is still null 15 s after mount
   // (server was still building the cache when the first request arrived),
   // keep retrying every 15 s until it loads.
@@ -709,25 +814,35 @@ export default function Dashboard2Page() {
       }
       // Tentative jobs (no scheduled date):
       // No DueDate at all: always include, any company — nothing to judge it against.
+      // Already overdue and still unscheduled: always include when browsing
+      // the current/future month — these get folded into "Scheduled
+      // Awaiting to be Done" (see statusKey) as live backlog risk, not tied
+      // to any one month. A past-month view still requires the due date to
+      // fall in that specific month, so overdue jobs don't leak into every
+      // earlier month's numbers.
       // CHUBB (company 8): always include all pending jobs regardless of DueDate.
-      // RM AFSS (company 1): same bounded window as scheduled jobs above —
-      // DueDate must fall between today and end of month for the
+      // RM AFSS (company 1): DueDate must fall on/before the end of the
       // current/future month; past months show the whole month.
-      // Others: include if DueDate >= today.
+      // Others: include if DueDate falls on/before the end of month.
       if (!due) return true;
+      if (!isPastMonth && due < todayStr) return true;
       if ((j._company as number) === 8) return true;
       if ((j._company as number) === 1) {
-        if (!isPastMonth) return due >= todayStr && due <= monthEndStr;
+        if (!isPastMonth) return due <= monthEndStr;
         const dt = new Date(due);
         return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
       }
-      if (isFutureMonth) return due >= todayStr;
+      if (isFutureMonth) return true;
       const dt = new Date(due);
       return dt.getFullYear() === fy && dt.getMonth() + 1 === fm;
     });
   };
   const visibleAll  = filterJobs(allJobs);
   const visibleCo   = (id: number) => filterJobs(coJobs(id)).filter(j => !isDatacomJob(j));
+  // Real "today", not the selected month filter — statusKey uses this to
+  // fold overdue-unscheduled jobs into "Scheduled Awaiting to be Done"
+  // regardless of which month the rest of the table is scoped to.
+  const todayRealStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   // Fixed range (current month through December) rather than deriving from
   // job dates — a month with no jobs yet should still be selectable, not
@@ -756,9 +871,9 @@ export default function Dashboard2Page() {
     if (monthFilter === "all") return member.monthlyHours;
     const [fy, fm] = monthFilter.split("-").map(Number);
     if (fy === now.getFullYear() && fm === now.getMonth() + 1) return member.monthlyHours;
-    const isFuture = fy > now.getFullYear() || (fy === now.getFullYear() && fm > now.getMonth() + 1);
-    if (isFuture) return totalWorkingDaysInMonth(fy, fm) - nonShutdownHolidays(publicHolidays).length * 8;
-    return totalWorkingDaysInMonth(fy, fm) - nonShutdownHolidays(publicHolidays).length * 8;
+    const bookedThisMonth = remainingPublicHolidayEntriesInMonth(member, new Date(fy, fm - 1, 1));
+    const count = unionHolidayCount(publicHolidays, bookedThisMonth);
+    return totalWorkingDaysInMonth(fy, fm) - count * 8;
   };
 
   // Every month from now through the selected month (inclusive) — drives
@@ -780,7 +895,9 @@ export default function Dashboard2Page() {
     monthlyHolidays[`${year}-${String(month).padStart(2, "0")}`] ?? [];
   const monthSupplyHours = (member: TeamMember, year: number, month: number): number => {
     if (year === now.getFullYear() && month === now.getMonth() + 1) return member.monthlyHours;
-    return totalWorkingDaysInMonth(year, month) - nonShutdownHolidays(holidaysFor(year, month)).length * 8;
+    const bookedThisMonth = remainingPublicHolidayEntriesInMonth(member, new Date(year, month - 1, 1));
+    const count = unionHolidayCount(holidaysFor(year, month), bookedThisMonth);
+    return totalWorkingDaysInMonth(year, month) - count * 8;
   };
 
   const TH = ({ children }: { children: React.ReactNode }) => (
@@ -912,7 +1029,7 @@ export default function Dashboard2Page() {
                   const getHrs = row.key === "scheduled"
                     ? (j: RawJob) => { const sh = scheduledHrs(j); return sh > 0 ? sh : jobHours(j); }
                     : jobHours;
-                  const rowFilter = (j: RawJob) => statusKey(j) === row.key;
+                  const rowFilter = (j: RawJob) => statusKey(j, todayRealStr) === row.key;
                   const zero = { count: 0, hrs: 0, amt: 0 };
                   return (
                     <React.Fragment key={row.key}>
@@ -1037,15 +1154,13 @@ export default function Dashboard2Page() {
                 })}
 
                 {/* Public Holidays row — current month is blank here since its
-                    deduction is already baked into member.monthlyHours server-side.
-                    Christmas/Boxing/New Year's are excluded here since they fall
-                    inside the Company Shutdown row below, which covers them instead. */}
-                {supplyMonths.some(({ year, month }) => !(year === now.getFullYear() && month === now.getMonth() + 1) && nonShutdownHolidays(holidaysFor(year, month)).length > 0) && (
+                    deduction is already baked into member.monthlyHours server-side. */}
+                {supplyMonths.some(({ year, month }) => !(year === now.getFullYear() && month === now.getMonth() + 1) && holidaysFor(year, month).length > 0) && (
                   <tr>
                     <td className="border border-gray-400 px-3 py-1 text-center text-xs font-semibold text-red-600">Public Holidays</td>
                     {supplyMonths.map(({ year, month }) => {
                       const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
-                      const h = isCurrent ? [] : nonShutdownHolidays(holidaysFor(year, month));
+                      const h = isCurrent ? [] : holidaysFor(year, month);
                       return (
                         <td key={`${year}-${month}`} className="border border-gray-400 px-1.5 py-1 text-center text-xs text-red-600">
                           {h.length > 0 ? `−${h.length * 8}` : ""}
@@ -1055,13 +1170,13 @@ export default function Dashboard2Page() {
                     <td className="border border-gray-400 px-2 py-1 text-center text-xs text-red-600">
                       −{supplyMonths.reduce((s, { year, month }) => {
                         const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
-                        return s + (isCurrent ? 0 : nonShutdownHolidays(holidaysFor(year, month)).length * 8);
+                        return s + (isCurrent ? 0 : holidaysFor(year, month).length * 8);
                       }, 0)}
                     </td>
                     <td className="border border-gray-400 px-2 py-1 text-xs text-red-600">
                       {supplyMonths.flatMap(({ year, month }) => {
                         const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
-                        return isCurrent ? [] : nonShutdownHolidays(holidaysFor(year, month)).map(ph => {
+                        return isCurrent ? [] : holidaysFor(year, month).map(ph => {
                           const d = ph.date.split("-")[2];
                           return `${ph.name} (${parseInt(d)} ${new Date(year, month - 1, 1).toLocaleString("en-AU", { month: "short" })})`;
                         });
@@ -1070,14 +1185,30 @@ export default function Dashboard2Page() {
                   </tr>
                 )}
 
-                {/* Company Shutdown row — annual 18 Dec to 5 Jan closure, same
-                    current-month exclusion as Public Holidays above */}
-                {supplyMonths.some(({ year, month }) => !(year === now.getFullYear() && month === now.getMonth() + 1) && shutdownHoursInMonth(year, month) > 0) && (
+                {/* Staff Leave row — unlike Public Holidays above,
+                    this stays visible for the current month too. Individual leave
+                    is exactly what people need to see at a glance, not just a
+                    quietly smaller number in someone's supply column. Also lists
+                    SimPRO's own individually-booked Public Holiday activity —
+                    that DOES auto-deduct via monthSupplyHours/unionHolidayCount
+                    above, but is unioned with the org-wide calendar (not
+                    summed), so this row's own hrs/total columns still only
+                    show Annual/Sick leave — showing Public Holiday hours here
+                    too would double up what the Public Holidays row above
+                    already displays for the common case where both agree. */}
+                {supplyMonths.some(({ year, month }) => {
+                  const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
+                  const ref = isCurrent ? now : new Date(year, month - 1, 1);
+                  return [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].some(m =>
+                    leaveHoursInMonth(m, ref) > 0 || remainingPublicHolidayEntriesInMonth(m, ref).length > 0
+                  );
+                }) && (
                   <tr>
-                    <td className="border border-gray-400 px-3 py-1 text-center text-xs font-semibold text-red-600">Company Shutdown</td>
+                    <td className="border border-gray-400 px-3 py-1 text-center text-xs font-semibold text-red-600">Staff Leave</td>
                     {supplyMonths.map(({ year, month }) => {
                       const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
-                      const hrs = isCurrent ? 0 : shutdownHoursInMonth(year, month);
+                      const ref = isCurrent ? now : new Date(year, month - 1, 1);
+                      const hrs = [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s, m) => s + leaveHoursInMonth(m, ref), 0);
                       return (
                         <td key={`${year}-${month}`} className="border border-gray-400 px-1.5 py-1 text-center text-xs text-red-600">
                           {hrs > 0 ? `−${hrs}` : ""}
@@ -1087,11 +1218,25 @@ export default function Dashboard2Page() {
                     <td className="border border-gray-400 px-2 py-1 text-center text-xs text-red-600">
                       −{supplyMonths.reduce((s, { year, month }) => {
                         const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
-                        return s + (isCurrent ? 0 : shutdownHoursInMonth(year, month));
+                        const ref = isCurrent ? now : new Date(year, month - 1, 1);
+                        return s + [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].reduce((s2, m) => s2 + leaveHoursInMonth(m, ref), 0);
                       }, 0)}
                     </td>
                     <td className="border border-gray-400 px-2 py-1 text-xs text-red-600">
-                      Company Shutdown (18 Dec – 5 Jan)
+                      {supplyMonths.flatMap(({ year, month }) => {
+                        const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
+                        const ref = isCurrent ? now : new Date(year, month - 1, 1);
+                        const fmtLabel = (from: string, to: string) => {
+                          const fromD = new Date(from), toD = new Date(to);
+                          return from === to
+                            ? `${fromD.getDate()} ${fromD.toLocaleString("en-AU", { month: "short" })}`
+                            : `${fromD.getDate()}–${toD.getDate()} ${toD.toLocaleString("en-AU", { month: "short" })}`;
+                        };
+                        return [...team.filter(m => !hiddenCoreIds.has(m.id)), ...extraTeam].flatMap(m => [
+                          ...remainingLeaveEntriesInMonth(m, ref).map(({ from, to }) => `${m.name} (${fmtLabel(from, to)})`),
+                          ...remainingPublicHolidayEntriesInMonth(m, ref).map(({ from, to }) => `${m.name} — Public Holiday (${fmtLabel(from, to)})`),
+                        ]);
+                      }).join(" · ")}
                     </td>
                   </tr>
                 )}
