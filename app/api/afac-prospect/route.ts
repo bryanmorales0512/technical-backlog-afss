@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import { gcsWrite } from "../../lib/gcsCache";
-import { buildData, buildDebugData, cacheFile, CACHE_TTL } from "./core";
+import { buildData, buildDebugData, readCachedEntry, writeCachedEntry, CACHE_TTL } from "./core";
 
 export type { AfacProspectResponse } from "./core";
+
+// The cumulative window grows every month, so a cold computation (no cache
+// at all yet for that month) can take well over a minute — give it real
+// headroom instead of the platform default, same as the other heavy routes.
+export const maxDuration = 300;
+
+async function recompute(filterYear?: number, filterMonth?: number) {
+  const data = await buildData(filterYear, filterMonth);
+  await writeCachedEntry(data, filterYear, filterMonth);
+  return data;
+}
 
 export async function GET(req: Request) {
   const url   = new URL(req.url);
@@ -21,22 +30,27 @@ export async function GET(req: Request) {
   const filterYear  = yearParam  ? parseInt(yearParam,  10) : undefined;
   const filterMonth = monthParam ? parseInt(monthParam, 10) : undefined;
 
-  try {
-    const raw = await fs.readFile(cacheFile(filterYear, filterMonth), "utf-8");
-    const c   = JSON.parse(raw) as { data: unknown; ts: number };
-    if (!force && Date.now() - c.ts < CACHE_TTL) {
-      return NextResponse.json(c.data, { headers: { "Cache-Control": "no-store" } });
-    }
-  } catch { /* cold cache */ }
+  const entry = await readCachedEntry(filterYear, filterMonth);
 
-  let data;
+  if (entry && !force) {
+    const fresh = Date.now() - entry.ts < CACHE_TTL;
+    if (!fresh) {
+      // Stale-while-revalidate: this cumulative computation can take a
+      // minute+ on a cold month, which left the widget blank while the user
+      // was still clicking through months. Serve the last known value
+      // immediately and refresh in the background for next time. In
+      // practice /api/warmup keeps every month fresh automatically, so this
+      // path is just a safety net, not the normal case.
+      recompute(filterYear, filterMonth).catch(() => {});
+    }
+    return NextResponse.json(entry.data, { headers: { "Cache-Control": "no-store" } });
+  }
+
   try {
-    data = await buildData(filterYear, filterMonth);
+    const data = await recompute(filterYear, filterMonth);
+    return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
+    if (entry) return NextResponse.json(entry.data, { headers: { "Cache-Control": "no-store" } });
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
-  const json = JSON.stringify({ data, ts: Date.now() });
-  fs.writeFile(cacheFile(filterYear, filterMonth), json, "utf-8").catch(() => {});
-  gcsWrite(`afss-afac-prospect-v15-${cacheFile(filterYear, filterMonth).split("v15-")[1]}`, json);
-  return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
 }

@@ -7,7 +7,11 @@ const BASE_URL = process.env.SIMPRO_BASE_URL;
 const TOKEN    = process.env.SIMPRO_TOKEN?.replace(/^﻿/, "").trim();
 const hdrs     = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
 
-const AFSS_STAFF_ID = 1581;
+// The master "AFSS - Audit" cost centre for company 8 (Adair Fire Audits in
+// SimPRO's own UI) — confirmed via /setup/accounts/costCenters/. Schedule
+// blocks only carry a per-job cost-centre *instance* ID (Project.CostCenterID),
+// which must be resolved through the job's costCenters list to get here.
+const AFSS_AUDIT_CC_ID = 382;
 
 export const CACHE_TTL = 60 * 60_000;
 export const EXCLUSIONS_FILE = join(process.cwd(), "data", "afac-exclusions.json");
@@ -16,7 +20,36 @@ export function cacheFile(filterYear?: number, filterMonth?: number) {
   const aest = new Date(Date.now() + 10 * 60 * 60 * 1000);
   const y = filterYear  ?? aest.getUTCFullYear();
   const m = String(filterMonth ?? (aest.getUTCMonth() + 1)).padStart(2, "0");
-  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-afac-prospect-v15-${y}-${m}.json`);
+  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-afac-prospect-v17-${y}-${m}.json`);
+}
+
+function gcsKeyFor(filterYear?: number, filterMonth?: number): string {
+  return `afss-afac-prospect-v17-${cacheFile(filterYear, filterMonth).split("v17-")[1]}`;
+}
+
+export type CachedEntry = { data: AfacProspectResponse; ts: number };
+
+// Shared by the route (on-demand reads) and warmAfacProspect (background
+// refresh) so both agree on exactly one cache format — local file first,
+// falling back to GCS (and mirroring it locally) for a fresh container that
+// hasn't seen this month yet.
+export async function readCachedEntry(filterYear?: number, filterMonth?: number): Promise<CachedEntry | null> {
+  try {
+    const raw = await fs.readFile(cacheFile(filterYear, filterMonth), "utf-8");
+    return JSON.parse(raw) as CachedEntry;
+  } catch { /* fall through to GCS */ }
+  try {
+    const remote = await gcsRead(gcsKeyFor(filterYear, filterMonth));
+    if (!remote) return null;
+    fs.writeFile(cacheFile(filterYear, filterMonth), remote, "utf-8").catch(() => {});
+    return JSON.parse(remote) as CachedEntry;
+  } catch { return null; }
+}
+
+export async function writeCachedEntry(data: AfacProspectResponse, filterYear?: number, filterMonth?: number): Promise<void> {
+  const json = JSON.stringify({ data, ts: Date.now() });
+  try { await fs.writeFile(cacheFile(filterYear, filterMonth), json, "utf-8"); } catch { /* ignore */ }
+  gcsWrite(gcsKeyFor(filterYear, filterMonth), json);
 }
 
 async function loadExclusions(): Promise<Set<string>> {
@@ -30,6 +63,28 @@ async function loadExclusions(): Promise<Set<string>> {
     const dates = JSON.parse(await fs.readFile(EXCLUSIONS_FILE, "utf-8")) as string[];
     return new Set(dates);
   } catch { return new Set(); }
+}
+
+// Persists which job-section pairs resolve to the "AFSS - Audit" cost centre.
+// A job's cost-centre assignment never changes once scheduled, and every
+// month's window is a superset of the previous month's — so without this,
+// each later month re-resolves every earlier month's job-sections from
+// scratch (a live SimPRO round trip apiece), which is what made
+// September/October take 10-46s and left November/December still
+// uncomputed. With this cache, only genuinely new job-sections need a live
+// lookup, so later months get progressively faster instead of slower.
+const CC_RESOLVE_CACHE_KEY = "afss-afac-cc-resolve-cache-v1.json";
+
+async function loadCcResolveCache(): Promise<Record<string, string[]>> {
+  try {
+    const remote = await gcsRead(CC_RESOLVE_CACHE_KEY);
+    if (remote) return JSON.parse(remote) as Record<string, string[]>;
+  } catch {}
+  return {};
+}
+
+function saveCcResolveCache(cache: Record<string, string[]>): void {
+  gcsWrite(CC_RESOLVE_CACHE_KEY, JSON.stringify(cache)); // fire-and-forget, same as other caches here
 }
 
 function listOf(d: unknown): Record<string, unknown>[] {
@@ -70,15 +125,28 @@ export type AfacProspectResponse = {
   costCentreFiltered: boolean;
 };
 
-export async function buildDebugData(filterYear?: number, filterMonth?: number) {
-  const exclusions = await loadExclusions();
-  const aest      = new Date(Date.now() + 10 * 60 * 60 * 1000);
-  const baseYear  = filterYear  ?? aest.getUTCFullYear();
-  const baseMonth = filterMonth ?? (aest.getUTCMonth() + 1);
-  const targetYear = baseYear - 1;
-  const start = new Date(targetYear, baseMonth - 1, 1);
-  const end   = new Date(targetYear, baseMonth, 0);
+// Matches the "Schedule Breakdown" report in SimPRO (Company: Adair Fire
+// Audits, Cost Centre: AFSS - Audit, Technician: No Filter) for the window
+// "today's date one year ago" through "end of the selected month, one year
+// ago" — a cumulative, growing window anchored on today, not an isolated
+// single month. Confirmed against SimPRO directly: e.g. for the August
+// dashboard view the window is 14 Jul 2025 -> 31 Aug 2025, not 1-31 Aug 2025.
+function dateWindow(filterYear?: number, filterMonth?: number) {
+  const aest = new Date(Date.now() + 10 * 60 * 60 * 1000);
+  const start = new Date(aest.getUTCFullYear() - 1, aest.getUTCMonth(), aest.getUTCDate());
 
+  const baseYear   = filterYear  ?? aest.getUTCFullYear();
+  const baseMonth  = filterMonth ?? (aest.getUTCMonth() + 1);
+  const targetYear = baseYear - 1;
+  const end = new Date(targetYear, baseMonth, 0);
+
+  return { start, end };
+}
+
+// Fetches every schedule block (all technicians) in the window, then resolves
+// each block's job cost-centre *instance* (Project.CostCenterID) to the
+// master cost centre it belongs to, keeping only "AFSS - Audit" (382).
+async function fetchAfssAuditBlocks(start: Date, end: Date, exclusions: Set<string>) {
   let allBlocks: Record<string, unknown>[] = [];
   const cursor = new Date(start);
   while (cursor <= end) {
@@ -93,102 +161,94 @@ export async function buildDebugData(filterYear?: number, filterMonth?: number) 
     cursor.setDate(cursor.getDate() + 1);
   }
 
-  const sobanBlocks = allBlocks.filter(b => (b.Staff as Record<string, unknown>)?.ID === AFSS_STAFF_ID);
-  const uniqueProjectIds = [...new Set(sobanBlocks.map(b => (b.Project as Record<string, unknown>)?.ProjectID).filter((id): id is string | number => id != null))];
+  const uniqueJobSections = new Map<string, { jobId: string | number; sectionId: string | number }>();
+  for (const b of allBlocks) {
+    const proj = (b.Project as Record<string, unknown>) ?? {};
+    if (proj.ProjectID == null || proj.SectionID == null) continue;
+    uniqueJobSections.set(`${proj.ProjectID}-${proj.SectionID}`, {
+      jobId: proj.ProjectID as string | number,
+      sectionId: proj.SectionID as string | number,
+    });
+  }
 
-  const [jobDetails, jobSections] = await Promise.all([
-    Promise.all(uniqueProjectIds.map(id => simGet(`/api/v1.0/companies/8/jobs/${id}`).catch(() => null))),
-    Promise.all(uniqueProjectIds.map(id => simGet(`/api/v1.0/companies/8/jobs/${id}/sections/?pageSize=250`).catch(() => null))),
-  ]);
+  const ccCache = await loadCcResolveCache();
+  const keysToResolve = [...uniqueJobSections.keys()].filter(k => !(k in ccCache));
+
+  if (keysToResolve.length > 0) {
+    // Bounded concurrency — resolving hundreds of job-sections at once (a
+    // cold December window) triggers SimPRO's 429 rate limit, and each 429
+    // costs an exponential backoff in simGet, which is what made large
+    // windows slow. Chunking keeps concurrent requests modest.
+    const CHUNK = 15;
+    for (let i = 0; i < keysToResolve.length; i += CHUNK) {
+      const chunk = keysToResolve.slice(i, i + CHUNK);
+      const lists = await Promise.all(
+        chunk.map(key => {
+          const { jobId, sectionId } = uniqueJobSections.get(key)!;
+          return simGet(`/api/v1.0/companies/8/jobs/${jobId}/sections/${sectionId}/costCenters/?columns=ID,CostCenter&pageSize=250`).catch(() => []);
+        })
+      );
+      chunk.forEach((key, idx) => {
+        const matches: string[] = [];
+        for (const cc of listOf(lists[idx] ?? [])) {
+          if (((cc.CostCenter as Record<string, unknown>) ?? {}).ID === AFSS_AUDIT_CC_ID) {
+            matches.push(String(cc.ID));
+          }
+        }
+        ccCache[key] = matches;
+      });
+    }
+    saveCcResolveCache(ccCache);
+  }
+
+  const matchingCcInstanceIds = new Set<string>();
+  for (const key of uniqueJobSections.keys()) {
+    for (const id of ccCache[key] ?? []) matchingCcInstanceIds.add(id);
+  }
+
+  return allBlocks.filter(b => {
+    const proj = (b.Project as Record<string, unknown>) ?? {};
+    return proj.CostCenterID != null && matchingCcInstanceIds.has(String(proj.CostCenterID));
+  });
+}
+
+export async function buildDebugData(filterYear?: number, filterMonth?: number) {
+  const exclusions = await loadExclusions();
+  const { start, end } = dateWindow(filterYear, filterMonth);
+  const auditBlocks = await fetchAfssAuditBlocks(start, end, exclusions);
+  const uniqueProjectIds = [...new Set(auditBlocks.map(b => (b.Project as Record<string, unknown>)?.ProjectID).filter((id): id is string | number => id != null))];
 
   return {
     period: `${fmt(start)} to ${fmt(end)}`,
-    sobanBlockCount: sobanBlocks.length,
+    auditBlockCount: auditBlocks.length,
     uniqueProjectIds,
-    jobs: uniqueProjectIds.map((id, i) => ({
-      id,
-      customer: (jobDetails[i] as Record<string, unknown> | null)?.Customer,
-      sectionsRaw: jobSections[i],
-      sectionsCount: listOf(jobSections[i] ?? []).length,
-      sections: listOf(jobSections[i] ?? []).map(s => ({ id: s.ID, name: s.Name, CostCenter: s.CostCenter })),
-    })),
   };
 }
 
 export async function buildData(filterYear?: number, filterMonth?: number): Promise<AfacProspectResponse> {
   const exclusions = await loadExclusions();
-
-  const aest       = new Date(Date.now() + 10 * 60 * 60 * 1000);
-  const baseYear   = filterYear  ?? aest.getUTCFullYear();
-  const baseMonth  = filterMonth ?? (aest.getUTCMonth() + 1);
-  const targetYear = baseYear - 1;
-  const start = new Date(targetYear, baseMonth - 1, 1);
-  const end   = new Date(targetYear, baseMonth, 0);
+  const { start, end } = dateWindow(filterYear, filterMonth);
   const dateFrom = fmt(start);
   const dateTo   = fmt(end);
 
-  let allBlocks: Record<string, unknown>[] = [];
-  const cursor = new Date(start);
-  while (cursor <= end) {
-    if (cursor.getDay() !== 0 && cursor.getDay() !== 6) {
-      const day = fmt(new Date(cursor));
-      if (!exclusions.has(day)) {
-        const raw = listOf(await simGet(
-          `/api/v1.0/companies/8/schedules/?Date=${day}&pageSize=250`
-        ) ?? []);
-        allBlocks = allBlocks.concat(raw);
-      }
-      await sleep(80);
-    }
-    cursor.setDate(cursor.getDate() + 1);
-  }
+  const auditBlocks = await fetchAfssAuditBlocks(start, end, exclusions);
 
-  const sobanBlocks = allBlocks.filter(
-    b => (b.Staff as Record<string, unknown>)?.ID === AFSS_STAFF_ID
-  );
-
-  const uniqueProjectIds = [
-    ...new Set(
-      sobanBlocks
-        .map(b => (b.Project as Record<string, unknown>)?.ProjectID)
-        .filter((id): id is string | number => id != null)
-    ),
-  ];
-
-  const jobDetails = await Promise.all(
-    uniqueProjectIds.map(id =>
-      simGet(`/api/v1.0/companies/8/jobs/${id}`).catch(() => null)
-    )
-  );
-
-  const afssProjectIds = new Set<string | number>();
-  const jobTotalMap = new Map<string | number, number>();
-  uniqueProjectIds.forEach((id, i) => {
-    const job = jobDetails[i] as Record<string, unknown> | null;
-    if (!job) return;
-    const customer = String(
-      (job.Customer as Record<string, unknown>)?.CompanyName ?? ""
-    ).toUpperCase();
-    const INTERNAL = ["REDMEN FIRE", "AFAC", "ADAIR OPERATION", "Z SAFE"];
-    if (INTERNAL.some(c => customer.includes(c))) return;
-
-    afssProjectIds.add(id);
-    const exTax = Number((job.Total as Record<string, unknown>)?.ExTax ?? 0);
-    jobTotalMap.set(id, exTax);
-  });
-
-  const afssBlocks = sobanBlocks.filter(b => {
-    const pid = (b.Project as Record<string, unknown>)?.ProjectID;
-    return pid != null && afssProjectIds.has(pid as string | number);
-  });
-
+  // "Jobs" counts report ROWS, matching SimPRO's Schedule Breakdown "Results"
+  // counter exactly — a schedule entry with multiple time blocks in one day
+  // (e.g. two separate appointments against the same job) is one row per
+  // block in that report, not one row per job. Same convention as the
+  // Tech Support "# of Jobs" card (see core.ts there). Verified live:
+  // 14 Jul - 30 Sep 2025 window -> SimPRO Results (62) == this count (62).
+  let rowCount = 0;
   let totalHours = 0;
-  for (const b of afssBlocks) {
+  for (const b of auditBlocks) {
+    const blockCount = (b.Blocks as unknown[] | undefined)?.length ?? 0;
+    rowCount += Math.max(1, blockCount);
     totalHours += Number(b.TotalHours ?? 0);
   }
 
   return {
-    jobs: afssProjectIds.size,
+    jobs: rowCount,
     hours: Math.round(totalHours * 100) / 100,
     dateFrom,
     dateTo,
@@ -204,17 +264,29 @@ export async function clearCache(): Promise<void> {
     const files = await fs.readdir(dir);
     await Promise.all(
       files
-        .filter(f => f.startsWith("afss-afac-prospect-v15-"))
+        .filter(f => f.startsWith("afss-afac-prospect-v17-"))
         .map(f => fs.unlink(join(dir, f)).catch(() => {})),
     );
   } catch { /* no cache dir yet — nothing to clear */ }
 }
 
+// Keeps every selectable month (current through December) pre-computed and
+// fresh in the background, on whatever schedule pings /api/warmup — so
+// nobody has to click into a month first and wait out a live multi-month
+// SimPRO scan; by the time anyone looks, it's already there. Skips a month
+// entirely if its cache is still within CACHE_TTL, so steady-state warmup
+// runs only recompute the one month (if any) that just went stale.
 export async function warmAfacProspect(): Promise<void> {
-  const data = await buildData();
-  const json = JSON.stringify({ data, ts: Date.now() });
-  try {
-    await fs.writeFile(cacheFile(), json, "utf-8");
-  } catch { /* ignore */ }
-  gcsWrite(`afss-afac-prospect-v15-${cacheFile().split("v15-")[1]}`, json);
+  const aest  = new Date(Date.now() + 10 * 60 * 60 * 1000);
+  const year  = aest.getUTCFullYear();
+  const currentMonth = aest.getUTCMonth() + 1;
+
+  for (let month = currentMonth; month <= 12; month++) {
+    const entry = await readCachedEntry(year, month);
+    if (entry && Date.now() - entry.ts < CACHE_TTL) continue;
+
+    const data = await buildData(year, month).catch(() => null);
+    if (!data) continue;
+    await writeCachedEntry(data, year, month);
+  }
 }
