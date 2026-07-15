@@ -1064,11 +1064,15 @@ export default function Dashboard2Page() {
                   // Awaiting to be Done" since those jobs are otherwise
                   // silently folded into that count with no other visibility
                   // (see isPastDueUnscheduled/statusKey).
-                  const pastDueTitle = (jobs: RawJob[]) => row.key !== "scheduled" ? "" : jobs
-                    .filter(j => isPastDueUnscheduled(j, todayRealStr))
-                    .sort((a, b) => s(a.DueDate).localeCompare(s(b.DueDate)))
-                    .map(j => `• ${jobLabel(j)} — Due ${fmtDueDate(j.DueDate as string)}`)
-                    .join("\n");
+                  const pastDueTitle = (jobs: RawJob[]) => {
+                    if (row.key !== "scheduled") return "";
+                    const overdue = jobs.filter(j => isPastDueUnscheduled(j, todayRealStr));
+                    if (overdue.length === 0) return "";
+                    const lines = overdue
+                      .sort((a, b) => s(a.DueDate).localeCompare(s(b.DueDate)))
+                      .map(j => `• ${jobLabel(j)} — Due ${fmtDueDate(j.DueDate as string)}`);
+                    return [`${overdue.length} job${overdue.length === 1 ? "" : "s"} past due:`, ...lines].join("\n");
+                  };
                   return (
                     <React.Fragment key={row.key}>
                       <tr>
