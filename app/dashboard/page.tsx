@@ -1054,8 +1054,9 @@ export default function DashboardPage() {
                   // (see isPastDueUnscheduled/statusKey).
                   const pastDueTitle = (jobs: RawJob[]) => row.key !== "scheduled" ? "" : jobs
                     .filter(j => isPastDueUnscheduled(j, todayRealStr))
-                    .map(j => `${jobLabel(j)} (Due ${fmtDueDate(j.DueDate as string)})`)
-                    .join(" · ");
+                    .sort((a, b) => s(a.DueDate).localeCompare(s(b.DueDate)))
+                    .map(j => `• ${jobLabel(j)} — Due ${fmtDueDate(j.DueDate as string)}`)
+                    .join("\n");
                   return (
                     <React.Fragment key={row.key}>
                       <tr>
