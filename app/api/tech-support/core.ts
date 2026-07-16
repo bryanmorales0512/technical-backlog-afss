@@ -18,7 +18,7 @@ export const QA_CACHE_TTL    = 60 * 60_000;
 
 // Cost centres the SimPRO Schedule Breakdown report deliberately leaves out —
 // everything else in SimPRO's setup cost-centre list counts.
-const EXCLUDED_CC_NAMES = new Set(["system testing", "afe afex systems"]);
+const EXCLUDED_CC_NAMES = new Set(["system testing", "afss works"]);
 
 // Fallback baseline only — the live list is fetched from SimPRO setup (see
 // refreshCcNames) so cost centres created after this snapshot still count.
@@ -120,7 +120,6 @@ export const KNOWN_AFSS_CC_IDS = new Set<number>([
   367774, 366871, 367112, 367904,
   366878, 367111, 367813, 367825, 367828,
   342907,
-  365492, 367662, // AFSS WORKS
 ]);
 
 const KNOWN_DATACOM_CC_IDS = new Set<number>([366467]);
@@ -679,15 +678,36 @@ async function buildBlocksAndJobMapCached(year: number, month: number, force = f
   return data;
 }
 
-// Raw contributing rows behind the OB/IT cards — a diagnostic view, so unlike
-// buildObIt() it doesn't merge in the current month's data for a future-month
-// query; it always reflects exactly the target month's window.
+// Raw contributing rows behind the OB/IT cards — a diagnostic view, so it
+// needs to sum to the same totals the cards show. That means the same
+// "today → end of target month" cumulative range as buildObIt(): for a
+// future month, merge in the rows from the month immediately before it too.
+// getObItRaw() below is cache-first, so that predecessor call recurses through
+// this same branch if it's future as well, chaining all the way back to today
+// no matter how many months out the target is — not just the very next one.
 async function buildObItRaw(year: number, month: number, excludeDatacom = false, force = false): Promise<{ otherBillable: TechSupportRawRow[]; investedTime: TechSupportRawRow[] }> {
   const { blockList, jobMap, ccCache, afssIds } = await buildBlocksAndJobMapCached(year, month, force);
-  return {
-    otherBillable: rawOtherBillable(blockList, jobMap, ccCache, excludeDatacom, afssIds),
-    investedTime:  rawInvestedTime(blockList, jobMap, ccCache, excludeDatacom, afssIds),
-  };
+  const otherBillable = rawOtherBillable(blockList, jobMap, ccCache, excludeDatacom, afssIds);
+  const investedTime  = rawInvestedTime(blockList, jobMap, ccCache, excludeDatacom, afssIds);
+
+  const aest       = new Date(Date.now() + 10 * 60 * 60 * 1000);
+  const todayYear  = aest.getUTCFullYear();
+  const todayMonth = aest.getUTCMonth() + 1;
+  const isFuture   = year > todayYear || (year === todayYear && month > todayMonth);
+  if (isFuture) {
+    let prevYear  = year;
+    let prevMonth = month - 1;
+    if (prevMonth < 1) { prevMonth = 12; prevYear--; }
+    try {
+      const prev = await getObItRaw(prevYear, prevMonth, excludeDatacom, force);
+      return {
+        otherBillable: [...prev.otherBillable, ...otherBillable],
+        investedTime:  [...prev.investedTime,  ...investedTime],
+      };
+    } catch { /* proceed with target-month-only rows */ }
+  }
+
+  return { otherBillable, investedTime };
 }
 
 const _obItRawInFlight = new Map<string, Promise<{ otherBillable: TechSupportRawRow[]; investedTime: TechSupportRawRow[] }>>();
@@ -731,25 +751,32 @@ async function buildObIt(year: number, month: number): Promise<{ regular: { othe
     investedTime:  calcInvestedTime(blockList, jobMap, ccCache, true, afssIds),
   };
 
-  // For a future month, merge the current month's data so the displayed range
-  // covers "today → end of target month" (matching SimPRO's date range).
-  // Build the current month on the fly if its cache doesn't exist yet.
+  // For a future month, the totals are cumulative — "today → end of target
+  // month" — so merge in the month immediately before the target rather than
+  // always the real current month. That predecessor's own build recurses
+  // through this same branch if it's future too, so picking a month several
+  // months out (e.g. September while July is the real month) chains all the
+  // way back to today instead of only pulling in July and silently dropping
+  // August's data.
   const aest       = new Date(Date.now() + 10 * 60 * 60 * 1000);
   const todayYear  = aest.getUTCFullYear();
   const todayMonth = aest.getUTCMonth() + 1;
   const isFuture   = year > todayYear || (year === todayYear && month > todayMonth);
   if (isFuture) {
-    let curReg  = await readObItCache(todayYear, todayMonth, false);
-    let curNodc = await readObItCache(todayYear, todayMonth, true);
-    // A stale current-month cache would bake already-past days into the
+    let prevYear  = year;
+    let prevMonth = month - 1;
+    if (prevMonth < 1) { prevMonth = 12; prevYear--; }
+    let curReg  = await readObItCache(prevYear, prevMonth, false);
+    let curNodc = await readObItCache(prevYear, prevMonth, true);
+    // A stale predecessor-month cache would bake already-past days into the
     // future-month total — treat it the same as a missing one.
     if (curReg  && Date.now() - curReg.ts  > OB_IT_CACHE_TTL) curReg  = null;
     if (curNodc && Date.now() - curNodc.ts > OB_IT_CACHE_TTL) curNodc = null;
     if (!curReg || !curNodc) {
       try {
-        const curBuilt = await buildObItDeduped(todayYear, todayMonth);
-        await writeObItCache(todayYear, todayMonth, curBuilt.regular, false);
-        await writeObItCache(todayYear, todayMonth, curBuilt.nodc,    true);
+        const curBuilt = await buildObItDeduped(prevYear, prevMonth);
+        await writeObItCache(prevYear, prevMonth, curBuilt.regular, false);
+        await writeObItCache(prevYear, prevMonth, curBuilt.nodc,    true);
         curReg  = { data: curBuilt.regular, ts: Date.now() };
         curNodc = { data: curBuilt.nodc,    ts: Date.now() };
       } catch { /* proceed with target-month-only data */ }

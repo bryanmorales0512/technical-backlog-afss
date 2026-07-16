@@ -6,6 +6,11 @@ import Link from "next/link";
 
 type RawJob = Record<string, unknown>;
 
+// Shared with app/dashboard/page.tsx and app/page.tsx — the Backlog page's
+// Tech Support raw drill-down views read this to inherit whichever month is
+// selected here, instead of exposing their own separate month picker.
+const DASHBOARD_MONTH_FILTER_KEY = "afss-dashboard-month-filter";
+
 type LeaveEntry  = { from: string; to: string };
 // publicHolidayBookings is visibility-only (SimPRO's own individual "Public
 // Holiday" activity bookings) — optional since extraTeam members (from
@@ -678,13 +683,15 @@ export default function Dashboard2Page() {
   }, [eodTick]);
 
   // Sync month filter to URL so it survives hard reloads; keep ref current so
-  // stale callbacks can always see the latest selected month.
+  // stale callbacks can always see the latest selected month. Also persist it
+  // so the Backlog page's Tech Support raw views can pick up the same month.
   useEffect(() => {
     monthFilterRef.current = monthFilter;
     const url = new URL(window.location.href);
     if (monthFilter === "all") url.searchParams.delete("m");
     else url.searchParams.set("m", monthFilter);
     window.history.replaceState(null, "", url.toString());
+    try { localStorage.setItem(DASHBOARD_MONTH_FILTER_KEY, monthFilter); } catch {}
   }, [monthFilter]);
 
   // Re-fetch tech support and AFAC prospect whenever month changes.
@@ -1396,6 +1403,15 @@ export default function Dashboard2Page() {
                 <tr>
                   <td colSpan={9} className="border border-gray-400 px-3 py-3 text-center font-bold text-base bg-slate-800 text-white">
                     TECHNICAL SUPPORT WORKS
+                  </td>
+                </tr>
+                <tr>
+                  <td
+                    colSpan={9}
+                    className="border border-gray-400 px-2 py-1 text-center text-sm italic text-gray-500"
+                    style={{ backgroundColor: "#f1f5f9" }}
+                  >
+                    {monthFilter !== "all" ? (monthOptions.find(o => o.value === monthFilter)?.label ?? "All Months") : "All Months"}
                   </td>
                 </tr>
                 <tr>

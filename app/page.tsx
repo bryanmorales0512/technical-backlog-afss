@@ -81,6 +81,11 @@ function rawJobToRow(view: RawViewId, row: RawJob): string[] {
 
 const POLL_MS = 60_000;
 
+// Shared with app/dashboard/page.tsx and app/dashboard2/page.tsx — whichever
+// month is selected there gets written to this key, so the raw drill-down
+// views here can inherit it without their own picker.
+const DASHBOARD_MONTH_FILTER_KEY = "afss-dashboard-month-filter";
+
 type RawJob = Record<string, unknown>;
 
 function s(v: unknown): string {
@@ -309,11 +314,38 @@ export default function BacklogPage() {
   const [error,       setError]       = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing,  setRefreshing]  = useState(false);
+  // No picker here — inherited from whatever month was last selected on the
+  // Dashboard (see DASHBOARD_MONTH_FILTER_KEY there), so switching months on
+  // the Dashboard and then opening a Tech Support raw view shows that same
+  // month automatically instead of needing to be set again.
+  const [monthFilter] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem(DASHBOARD_MONTH_FILTER_KEY);
+        if (stored) return stored;
+      } catch {}
+    }
+    return "all";
+  });
 
   const raw = isRawView(view);
   const companyLabel = COMPANIES.find((c) => c.id === view)?.label
     ?? RAW_VIEWS.find((v) => v.id === view)?.label
     ?? "";
+
+  // Same range the Dashboard's month picker offers — current month through
+  // December — used only to render a human label for the inherited month.
+  const now = new Date();
+  const monthOptions = [
+    { value: "all", label: "All" },
+    ...Array.from({ length: 12 - now.getMonth() }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      return {
+        value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+        label: d.toLocaleString("en-AU", { month: "long", year: "numeric" }),
+      };
+    }),
+  ];
 
   // Track elapsed seconds while loading so the UI can show a "still working" message
   useEffect(() => {
@@ -326,16 +358,27 @@ export default function BacklogPage() {
   // No manual "force refresh" — every view stays in sync on its own via the
   // 60s auto-poll below plus the server-side background warmup, same as
   // RM/AFAC/ADAIR already work.
-  const fetchJobs = useCallback(async (bg = false, v = view, st = stage) => {
+  const fetchJobs = useCallback(async (bg = false, v = view, st = stage, mf = monthFilter) => {
     if (bg) setRefreshing(true);
     else setLoading(true);
     try {
-      const url = isRawView(v)
-        ? (v === "afac-prospect" ? "/api/afac-prospect/raw"
+      let url: string;
+      if (isRawView(v)) {
+        const p = new URLSearchParams();
+        if (mf !== "all") {
+          const [y, m] = mf.split("-");
+          p.set("year", y);
+          p.set("month", m);
+        }
+        const base = v === "afac-prospect" ? "/api/afac-prospect/raw"
           : v === "tech-ob" ? "/api/tech-support/raw?type=ob"
           : v === "tech-it" ? "/api/tech-support/raw?type=it"
-          : "/api/tech-support/raw?type=qa")
-        : `/api/data?company=${v}&stage=${st}`;
+          : "/api/tech-support/raw?type=qa";
+        const qs = p.toString();
+        url = qs ? `${base}${base.includes("?") ? "&" : "?"}${qs}` : base;
+      } else {
+        url = `/api/data?company=${v}&stage=${st}`;
+      }
       const res  = await fetch(url);
       const data = await res.json();
       if (data.error) {
@@ -351,17 +394,17 @@ export default function BacklogPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [view, stage]);
+  }, [view, stage, monthFilter]);
 
-  // Re-fetch when the view or stage changes. Raw views are cache-first
-  // server-side (see the /raw routes) so polling them is cheap, same as
-  // /api/data for RM/AFAC/ADAIR.
+  // Re-fetch when the view, stage, or (for raw views) month changes. Raw
+  // views are cache-first server-side (see the /raw routes) so polling them
+  // is cheap, same as /api/data for RM/AFAC/ADAIR.
   useEffect(() => {
     setJobs([]);
-    fetchJobs(false, view, stage);
-    const id = setInterval(() => fetchJobs(true, view, stage), POLL_MS);
+    fetchJobs(false, view, stage, monthFilter);
+    const id = setInterval(() => fetchJobs(true, view, stage, monthFilter), POLL_MS);
     return () => clearInterval(id);
-  }, [view, stage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [view, stage, monthFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stageColor = raw
     ? "bg-purple-100 text-purple-700"
@@ -504,6 +547,7 @@ export default function BacklogPage() {
         <div className="flex items-center gap-3 min-w-0">
           <span className="font-semibold text-neutral-800 text-sm truncate">
             {companyLabel}{!raw && ` — ${stage}${view === 8 ? "" : " · A CFSP ONLY"}`}
+            {raw && monthFilter !== "all" && ` — ${monthOptions.find(o => o.value === monthFilter)?.label ?? ""}`}
           </span>
           {!loading && (
             <span className={`px-2 py-0.5 rounded-full font-semibold text-xs shrink-0 ${stageColor}`}>
