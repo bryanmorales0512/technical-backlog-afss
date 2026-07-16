@@ -212,6 +212,30 @@ async function fetchAfssAuditBlocks(start: Date, end: Date, exclusions: Set<stri
   });
 }
 
+// buildData() (stats) and buildRawRows() (raw rows) both need the same
+// audit-block scan for a given month window — share one live pull between
+// them (and across repeated calls within CACHE_TTL) instead of each doing
+// its own full SimPRO scan, which is what made switching to/refreshing the
+// raw view slow.
+type AuditBlocks = Record<string, unknown>[];
+const _auditBlocksInFlight = new Map<string, Promise<AuditBlocks>>();
+const _auditBlocksCache    = new Map<string, { data: AuditBlocks; ts: number }>();
+async function fetchAfssAuditBlocksCached(filterYear: number | undefined, filterMonth: number | undefined, start: Date, end: Date, exclusions: Set<string>, force = false): Promise<AuditBlocks> {
+  const key = `${filterYear ?? "cur"}-${filterMonth ?? "cur"}`;
+  if (!force) {
+    const hit = _auditBlocksCache.get(key);
+    if (hit && Date.now() - hit.ts < CACHE_TTL) return hit.data;
+  }
+  let p = _auditBlocksInFlight.get(key);
+  if (!p || force) {
+    p = fetchAfssAuditBlocks(start, end, exclusions).finally(() => _auditBlocksInFlight.delete(key));
+    _auditBlocksInFlight.set(key, p);
+  }
+  const data = await p;
+  _auditBlocksCache.set(key, { data, ts: Date.now() });
+  return data;
+}
+
 export async function buildDebugData(filterYear?: number, filterMonth?: number) {
   const exclusions = await loadExclusions();
   const { start, end } = dateWindow(filterYear, filterMonth);
@@ -225,13 +249,13 @@ export async function buildDebugData(filterYear?: number, filterMonth?: number) 
   };
 }
 
-export async function buildData(filterYear?: number, filterMonth?: number): Promise<AfacProspectResponse> {
+export async function buildData(filterYear?: number, filterMonth?: number, force = false): Promise<AfacProspectResponse> {
   const exclusions = await loadExclusions();
   const { start, end } = dateWindow(filterYear, filterMonth);
   const dateFrom = fmt(start);
   const dateTo   = fmt(end);
 
-  const auditBlocks = await fetchAfssAuditBlocks(start, end, exclusions);
+  const auditBlocks = await fetchAfssAuditBlocksCached(filterYear, filterMonth, start, end, exclusions, force);
 
   // "Jobs" counts report ROWS, matching SimPRO's Schedule Breakdown "Results"
   // counter exactly — a schedule entry with multiple time blocks in one day
@@ -256,6 +280,95 @@ export async function buildData(filterYear?: number, filterMonth?: number): Prom
   };
 }
 
+export type AfacProspectRawRow = { jobId: string; customer: string; site: string; date: string; hours: number };
+
+// One row per schedule record returned by SimPRO (using its real TotalHours),
+// not one row per Blocks[] sub-entry — so this row count can differ slightly
+// from buildData()'s "jobs" (which counts sub-blocks to match SimPRO's
+// Schedule Breakdown "Results" counter exactly). Customer/Site aren't on the
+// schedule endpoint itself, so they're resolved with one job lookup per
+// unique job in the window.
+async function buildRawRows(filterYear?: number, filterMonth?: number, force = false): Promise<AfacProspectRawRow[]> {
+  const exclusions = await loadExclusions();
+  const { start, end } = dateWindow(filterYear, filterMonth);
+  const auditBlocks = await fetchAfssAuditBlocksCached(filterYear, filterMonth, start, end, exclusions, force);
+
+  const uniqueIds = [...new Set(
+    auditBlocks.map(b => String((b.Project as Record<string, unknown> | undefined)?.ProjectID ?? "")).filter(Boolean)
+  )];
+  const jobMap = new Map<string, Record<string, unknown>>();
+  const BATCH = 5;
+  for (let i = 0; i < uniqueIds.length; i += BATCH) {
+    const batch = uniqueIds.slice(i, i + BATCH);
+    const results = await Promise.all(
+      batch.map(id => simGet(`/api/v1.0/companies/8/jobs/${id}?columns=ID,Customer,Site`).catch(() => null))
+    );
+    batch.forEach((id, idx) => { if (results[idx]) jobMap.set(id, results[idx] as Record<string, unknown>); });
+    if (i + BATCH < uniqueIds.length) await sleep(150);
+  }
+
+  return auditBlocks
+    .map(b => {
+      const proj = (b.Project as Record<string, unknown>) ?? {};
+      const jobId = String(proj.ProjectID ?? "");
+      const job = jobMap.get(jobId);
+      return {
+        jobId,
+        customer: String((job?.Customer as Record<string, unknown>)?.CompanyName ?? ""),
+        site: String((job?.Site as Record<string, unknown>)?.Name ?? ""),
+        date: String(b.Date ?? ""),
+        hours: Number(b.TotalHours ?? 0),
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function rawCacheFile(filterYear?: number, filterMonth?: number) {
+  const aest = new Date(Date.now() + 10 * 60 * 60 * 1000);
+  const y = filterYear  ?? aest.getUTCFullYear();
+  const m = String(filterMonth ?? (aest.getUTCMonth() + 1)).padStart(2, "0");
+  return join((process.env.CACHE_DIR ?? os.tmpdir()), `afss-afac-prospect-raw-v1-${y}-${m}.json`);
+}
+function rawGcsKeyFor(filterYear?: number, filterMonth?: number): string {
+  return `afss-afac-prospect-raw-v1-${rawCacheFile(filterYear, filterMonth).split("raw-v1-")[1]}`;
+}
+
+type CachedRawEntry = { data: AfacProspectRawRow[]; ts: number };
+async function readCachedRawEntry(filterYear?: number, filterMonth?: number): Promise<CachedRawEntry | null> {
+  try {
+    const raw = await fs.readFile(rawCacheFile(filterYear, filterMonth), "utf-8");
+    return JSON.parse(raw) as CachedRawEntry;
+  } catch { /* fall through to GCS */ }
+  try {
+    const remote = await gcsRead(rawGcsKeyFor(filterYear, filterMonth));
+    if (!remote) return null;
+    fs.writeFile(rawCacheFile(filterYear, filterMonth), remote, "utf-8").catch(() => {});
+    return JSON.parse(remote) as CachedRawEntry;
+  } catch { return null; }
+}
+async function writeCachedRawEntry(data: AfacProspectRawRow[], filterYear?: number, filterMonth?: number): Promise<void> {
+  const json = JSON.stringify({ data, ts: Date.now() });
+  try { await fs.writeFile(rawCacheFile(filterYear, filterMonth), json, "utf-8"); } catch { /* ignore */ }
+  gcsWrite(rawGcsKeyFor(filterYear, filterMonth), json);
+}
+
+// Cache-first, same pattern (and CACHE_TTL) as the main stats route — serves
+// instantly from the last live pull instead of re-running the full SimPRO
+// scan on every open; "Refresh now" sets force to bypass it.
+export async function getRawRows(filterYear?: number, filterMonth?: number, force = false): Promise<AfacProspectRawRow[]> {
+  const cached = await readCachedRawEntry(filterYear, filterMonth);
+  const fresh  = cached && Date.now() - cached.ts < CACHE_TTL;
+  if (fresh && !force) return cached.data;
+  try {
+    const data = await buildRawRows(filterYear, filterMonth, force);
+    await writeCachedRawEntry(data, filterYear, filterMonth);
+    return data;
+  } catch (err) {
+    if (cached) return cached.data;
+    throw err;
+  }
+}
+
 // Deletes all cached month files so the next load (forced or not) recomputes
 // with the current exclusions instead of serving stale pre-exclusion numbers.
 export async function clearCache(): Promise<void> {
@@ -264,7 +377,7 @@ export async function clearCache(): Promise<void> {
     const files = await fs.readdir(dir);
     await Promise.all(
       files
-        .filter(f => f.startsWith("afss-afac-prospect-v17-"))
+        .filter(f => f.startsWith("afss-afac-prospect-v17-") || f.startsWith("afss-afac-prospect-raw-v1-"))
         .map(f => fs.unlink(join(dir, f)).catch(() => {})),
     );
   } catch { /* no cache dir yet — nothing to clear */ }
@@ -288,5 +401,8 @@ export async function warmAfacProspect(): Promise<void> {
     const data = await buildData(year, month).catch(() => null);
     if (!data) continue;
     await writeCachedEntry(data, year, month);
+    // Reuses the audit-block scan the stats build above just warmed (see
+    // fetchAfssAuditBlocksCached) — no extra live SimPRO pull for this.
+    await getRawRows(year, month).catch(() => {});
   }
 }

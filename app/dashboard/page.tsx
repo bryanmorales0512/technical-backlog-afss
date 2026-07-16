@@ -36,51 +36,19 @@ function s(v: unknown): string {
   return "";
 }
 
-// todayStr is optional so call sites that don't care about the
-// scheduled/tentative split (isInAnyRow, hrsForJob) can keep calling this
-// with just a job.
-// Past due and still unscheduled: fold into "Scheduled Awaiting to be Done"
-// rather than "Tentative Awaiting Scheduling" — these are overdue, not
-// merely upcoming, so they belong with the jobs that need urgent action.
-// Pulled out of statusKey (rather than a local const) so the row's hover
-// tooltip can also use it to list which specific jobs are overdue.
-function isPastDueUnscheduled(job: RawJob, todayStr?: string): boolean {
-  return !job._scheduledDate && !!todayStr
-    && (job.DueDate as string | null) != null && (job.DueDate as string) < todayStr;
-}
-
-function fmtDueDate(d: string): string {
-  const dt = new Date(d);
-  return `${dt.getDate()} ${dt.toLocaleString("en-AU", { month: "short" })}`;
-}
-
-// SimPRO's job "Name" field is blank for most AFSS audit jobs — Site name
-// (the actual location being audited) is the far more reliable identifier,
-// falling back to the customer's name, then the raw job ID.
-function jobLabel(job: RawJob): string {
-  const name = s(job.Name);
-  if (name) return name;
-  const site = s((job.Site as Record<string, unknown> | null)?.Name);
-  if (site) return site;
-  const cust = s((job.Customer as Record<string, unknown> | null)?.CompanyName);
-  if (cust) return cust;
-  return `Job #${s(job.ID)}`;
-}
-
-function statusKey(job: RawJob, todayStr?: string): string {
+function statusKey(job: RawJob): string {
   const stage   = s(job.Stage).toLowerCase();
   const n       = s((job.Status as Record<string, unknown>)?.Name ?? job.Stage).toLowerCase();
   const company = job._company as number | undefined;
-  const pastDue = isPastDueUnscheduled(job, todayStr);
   // AE Evac (company 10) Progress = audit booked/scheduled, not attendance complete
   if (stage === "progress" && company === 10) {
     if (job._scheduledDate) return "scheduled";
-    return pastDue ? "scheduled" : "tentative";
+    return "tentative";
   }
   // All other Progress = attendance already done
   if (stage === "progress" || n.includes("complete") || n.includes("released") || n.includes("attendance")) return "complete";
   if (job._scheduledDate) return "scheduled";
-  return pastDue ? "scheduled" : "tentative";
+  return "tentative";
 }
 
 function jobPrice(job: RawJob): number {
@@ -127,6 +95,24 @@ function jobHoursRm(job: RawJob): number {
 
 function scheduledHrs(job: RawJob): number {
   return Number(job._scheduledHours ?? 0);
+}
+
+// AE Evac (company 10): jobs still at an early sales-contact stage in SimPRO
+// with no real estimate or price entered yet (Estimate/Total both 0) and no
+// booked schedule — dropped entirely (not counted, not just zeroed) wherever
+// AE Evac backlog is tallied, per explicit request. The _scheduledDate check
+// is required: AE Evac's real hours/price live in _scheduledHours (booked
+// schedule), not Totals.ResourcesCost.LaborHours.Estimate/Total.ExTax — those
+// SimPRO fields are $0/0 for EVERY AE Evac job, scheduled or not, so without
+// this check a real, already-scheduled job would wrongly count as "empty" too.
+function isEmptyAeJob(job: RawJob): boolean {
+  if (job._scheduledDate) return false;
+  const totals   = job.Totals as Record<string, unknown> | undefined;
+  const resCost  = totals?.ResourcesCost as Record<string, unknown> | undefined;
+  const labHours = resCost?.LaborHours   as Record<string, unknown> | undefined;
+  const est      = labHours?.Estimate != null ? Number(labHours.Estimate) : 0;
+  const price    = Number((job.Total as Record<string, unknown>)?.ExTax ?? 0);
+  return est <= 0 && price <= 0;
 }
 
 // Only true if the job appears in a visible status row (excludes complete).
@@ -842,11 +828,6 @@ export default function DashboardPage() {
   };
   const visibleAll  = filterJobs(allJobs);
   const visibleCo   = (id: number) => filterJobs(coJobs(id));
-  // Real "today", not the selected month filter — statusKey uses this to
-  // fold overdue-unscheduled jobs into "Scheduled Awaiting to be Done"
-  // regardless of which month the rest of the table is scoped to.
-  const todayRealStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-
   // Fixed range (current month through December) rather than deriving from
   // job dates — a month with no jobs yet should still be selectable, not
   // silently missing from the dropdown.
@@ -1025,8 +1006,11 @@ export default function DashboardPage() {
                   >
                     Total Backlog as at end of period
                   </td>
-                  <StatCells s={(() => { const icSum = (parseFloat(icRmHrs)||0)+(parseFloat(icAeHrs)||0)+(parseFloat(icFiaHrs)||0); const b = COMPANIES.reduce((acc, co) => { const s = agg(visibleCo(co.id).filter(isInAnyRow), co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHoursRm : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice); return { count: acc.count + s.count, hrs: acc.hrs + s.hrs, amt: acc.amt + s.amt }; }, { count: 0, hrs: 0, amt: 0 }); return { count: b.count + (obData?.jobs ?? 0) + (itData?.jobs ?? 0) + (qaData?.jobs ?? 0) + (afacProspect?.jobs ?? 0), hrs: b.hrs + (afacProspect?.hours ?? 0) + (obData?.hours ?? 0) + (itData?.hours ?? 0) + (qaData?.hours ?? 0) + icSum, amt: b.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) + (icSum * 100) }; })()} bold />
-                  {COMPANIES.map(co => <StatCells key={co.id} s={agg(visibleCo(co.id).filter(isInAnyRow), co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHoursRm : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice)} bold loading={!(co.id in byCompany)} />)}
+                  <StatCells s={(() => { const icSum = (parseFloat(icRmHrs)||0)+(parseFloat(icAeHrs)||0)+(parseFloat(icFiaHrs)||0); const b = COMPANIES.reduce((acc, co) => { const coJobs = visibleCo(co.id).filter(isInAnyRow).filter(j => !(co.id === 10 && isEmptyAeJob(j))); const s = agg(coJobs, co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHoursRm : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice); return { count: acc.count + s.count, hrs: acc.hrs + s.hrs, amt: acc.amt + s.amt }; }, { count: 0, hrs: 0, amt: 0 }); return { count: b.count + (obData?.jobs ?? 0) + (itData?.jobs ?? 0) + (qaData?.jobs ?? 0) + (afacProspect?.jobs ?? 0), hrs: b.hrs + (afacProspect?.hours ?? 0) + (obData?.hours ?? 0) + (itData?.hours ?? 0) + (qaData?.hours ?? 0) + icSum, amt: b.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) + (icSum * 100) }; })()} bold />
+                  {COMPANIES.map(co => {
+                    const coJobs = visibleCo(co.id).filter(isInAnyRow).filter(j => !(co.id === 10 && isEmptyAeJob(j)));
+                    return <StatCells key={co.id} s={agg(coJobs, co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHoursRm : hrsForJob, co.id === 8 ? jobPriceAfac : jobPrice)} bold loading={!(co.id in byCompany)} />;
+                  })}
                 </tr>
 
                 {/* All Companies label */}
@@ -1045,22 +1029,8 @@ export default function DashboardPage() {
                   const getHrs = row.key === "scheduled"
                     ? (j: RawJob) => { const sh = scheduledHrs(j); return sh > 0 ? sh : jobHours(j); }
                     : jobHours;
-                  const rowFilter = (j: RawJob) => statusKey(j, todayRealStr) === row.key;
+                  const rowFilter = (j: RawJob) => statusKey(j) === row.key;
                   const zero = { count: 0, hrs: 0, amt: 0 };
-                  // Which specific jobs are overdue-and-unscheduled within a
-                  // set of jobs — shown as a hover tooltip on "Scheduled
-                  // Awaiting to be Done" since those jobs are otherwise
-                  // silently folded into that count with no other visibility
-                  // (see isPastDueUnscheduled/statusKey).
-                  const pastDueTitle = (jobs: RawJob[]) => {
-                    if (row.key !== "scheduled") return "";
-                    const overdue = jobs.filter(j => isPastDueUnscheduled(j, todayRealStr));
-                    if (overdue.length === 0) return "";
-                    const lines = overdue
-                      .sort((a, b) => s(a.DueDate).localeCompare(s(b.DueDate)))
-                      .map(j => `• ${jobLabel(j)} — Due ${fmtDueDate(j.DueDate as string)}`);
-                    return [`${overdue.length} job${overdue.length === 1 ? "" : "s"} past due:`, ...lines].join("\n");
-                  };
                   return (
                     <React.Fragment key={row.key}>
                       <tr>
@@ -1071,13 +1041,14 @@ export default function DashboardPage() {
                           {row.label}
                         </td>
                         <StatCells
-                          title={pastDueTitle(COMPANIES.flatMap(co => visibleCo(co.id).filter(rowFilter))) || undefined}
-                          s={(() => { if (row.key === "complete") return zero; const base = COMPANIES.reduce((acc, co) => { const coGetHrs = co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHoursRm : getHrs; const s = agg(visibleCo(co.id).filter(rowFilter), coGetHrs, co.id === 8 ? jobPriceAfac : jobPrice); return { count: acc.count + s.count, hrs: acc.hrs + s.hrs, amt: acc.amt + s.amt }; }, { count: 0, hrs: 0, amt: 0 }); if (row.key === "scheduled") return { count: base.count + (obData?.jobs ?? 0) + (itData?.jobs ?? 0), hrs: base.hrs + (obData?.hours ?? 0) + (itData?.hours ?? 0), amt: base.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) }; if (row.key === "tentative") return { count: base.count + (qaData?.jobs ?? 0) + (afacProspect?.jobs ?? 0), hrs: base.hrs + (qaData?.hours ?? 0) + (afacProspect?.hours ?? 0), amt: base.amt + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) }; return base; })()} />
+                          s={(() => { if (row.key === "complete") return zero; const icSum = (parseFloat(icRmHrs)||0) + (parseFloat(icAeHrs)||0) + (parseFloat(icFiaHrs)||0); const base = COMPANIES.reduce((acc, co) => { const coGetHrs = co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHoursRm : getHrs; const coGetAmt = co.id === 8 ? jobPriceAfac : jobPrice; const coJobs = visibleCo(co.id).filter(rowFilter).filter(j => !(row.key === "tentative" && co.id === 10 && isEmptyAeJob(j))); const s = agg(coJobs, coGetHrs, coGetAmt); return { count: acc.count + s.count, hrs: acc.hrs + s.hrs, amt: acc.amt + s.amt }; }, { count: 0, hrs: 0, amt: 0 }); if (row.key === "scheduled") return { count: base.count + (obData?.jobs ?? 0) + (itData?.jobs ?? 0), hrs: base.hrs + (obData?.hours ?? 0) + (itData?.hours ?? 0), amt: base.amt + (obData?.amount ?? 0) + (itData?.amount ?? 0) }; if (row.key === "tentative") return { count: base.count + (qaData?.jobs ?? 0) + (afacProspect?.jobs ?? 0), hrs: base.hrs + (qaData?.hours ?? 0) + (afacProspect?.hours ?? 0) + icSum, amt: base.amt + (qaData?.amount ?? 0) + ((afacProspect?.hours ?? 0) * 100) + (icSum * 100) }; return base; })()} />
                         {COMPANIES.map(co => {
-                          const jobs = visibleCo(co.id).filter(rowFilter);
+                          const jobs = visibleCo(co.id).filter(rowFilter)
+                            .filter(j => !(row.key === "tentative" && co.id === 10 && isEmptyAeJob(j)));
                           const coGetHrs = co.id === 8 ? jobHoursAfac : co.id === 1 ? jobHoursRm : getHrs;
-                          const s = agg(jobs, coGetHrs, co.id === 8 ? jobPriceAfac : jobPrice);
-                          return <StatCells key={co.id} s={row.key === "complete" ? zero : s} loading={!(co.id in byCompany)} title={pastDueTitle(jobs) || undefined} />;
+                          const coGetAmt = co.id === 8 ? jobPriceAfac : jobPrice;
+                          const s = agg(jobs, coGetHrs, coGetAmt);
+                          return <StatCells key={co.id} s={row.key === "complete" ? zero : s} loading={!(co.id in byCompany)} />;
                         })}
                       </tr>
                     </React.Fragment>
@@ -1488,7 +1459,8 @@ export default function DashboardPage() {
               const supplyTech   = cumulativeSupply(allMembers.filter(m => !m.role.includes("Primary APFS")));
               const demandAudit  = [1, 8, 10].reduce((sum, coId) => {
                 const getH = coId === 8 ? jobHoursAfac : coId === 1 ? jobHoursRm : hrsForJob;
-                return sum + visibleCo(coId).filter(isInAnyRow).reduce((s, j) => s + getH(j), 0);
+                const coJobs = visibleCo(coId).filter(isInAnyRow).filter(j => !(coId === 10 && isEmptyAeJob(j)));
+                return sum + coJobs.reduce((s, j) => s + getH(j), 0);
               }, 0) + (afacProspect?.hours ?? 0);
               const icSum        = (parseFloat(icRmHrs)||0) + (parseFloat(icAeHrs)||0) + (parseFloat(icFiaHrs)||0);
               const demandTech   = (obData?.hours ?? 0) + (itData?.hours ?? 0) + (qaData?.hours ?? 0) + icSum;

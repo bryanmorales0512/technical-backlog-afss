@@ -8,8 +8,8 @@ export type { AfacProspectResponse } from "./core";
 // headroom instead of the platform default, same as the other heavy routes.
 export const maxDuration = 300;
 
-async function recompute(filterYear?: number, filterMonth?: number) {
-  const data = await buildData(filterYear, filterMonth);
+async function recompute(filterYear?: number, filterMonth?: number, force = false) {
+  const data = await buildData(filterYear, filterMonth, force);
   await writeCachedEntry(data, filterYear, filterMonth);
   return data;
 }
@@ -47,7 +47,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    const data = await recompute(filterYear, filterMonth);
+    const data = await recompute(filterYear, filterMonth, force);
     return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     if (entry) return NextResponse.json(entry.data, { headers: { "Cache-Control": "no-store" } });

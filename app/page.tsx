@@ -46,6 +46,39 @@ const HEADERS_ADAIR_PROGRESS = [
   "Site Address", "Site State",
 ];
 
+// Raw data behind dashboard widgets that don't otherwise expose a per-row
+// list — computed live (no cache), so no Stage tabs and no 60s auto-poll.
+const RAW_VIEWS = [
+  { id: "afac-prospect", label: "AFAC Prospect Demand" },
+  { id: "tech-ob",       label: "Tech Support: Other Billable" },
+  { id: "tech-it",       label: "Tech Support: Invested Time" },
+  { id: "tech-qa",       label: "Tech Support: Quality Assurance" },
+] as const;
+
+type RawViewId = (typeof RAW_VIEWS)[number]["id"];
+type ViewId = CompanyId | RawViewId;
+
+function isRawView(id: ViewId): id is RawViewId {
+  return RAW_VIEWS.some(v => v.id === id);
+}
+
+const RAW_HEADERS: Record<RawViewId, string[]> = {
+  "afac-prospect": ["Job", "Customer", "Site", "Date", "Hours"],
+  "tech-ob":       ["Job", "Customer", "Cost Centre", "Date", "Hours"],
+  "tech-it":       ["Job", "Customer", "Cost Centre", "Date", "Hours"],
+  "tech-qa":       ["Job", "Customer", "Due Date", "Est. Hours"],
+};
+
+function rawJobToRow(view: RawViewId, row: RawJob): string[] {
+  if (view === "afac-prospect") {
+    return [s(row.jobId), s(row.customer), s(row.site), fmtDate(s(row.date)), s(row.hours)];
+  }
+  if (view === "tech-qa") {
+    return [s(row.id), s(row.customer), fmtDate(s(row.dueDate)), s(row.estHours)];
+  }
+  return [s(row.jobId), s(row.customer), s(row.ccName), fmtDate(s(row.date)), s(row.hours)];
+}
+
 const POLL_MS = 60_000;
 
 type RawJob = Record<string, unknown>;
@@ -164,7 +197,13 @@ function jobToRowADAIRPending(job: RawJob): string[] {
   const custName     = s(customer.CompanyName) || `${s(customer.GivenName)} ${s(customer.FamilyName)}`.trim();
   const scheduledRaw = s(job._scheduledDate) || s(job.Scheduled) || s(job.DateScheduled) || s(job.ScheduledDate) || s(job.DateBooked);
   const estRaw       = labHours.Estimate != null ? Number(labHours.Estimate) : null;
-  const estHours     = estRaw != null && estRaw > 0 ? String(estRaw) : "2";
+  // A job with no real estimate, no real price, AND no booked schedule yet
+  // (still at an early sales-contact stage in SimPRO) shows 0 rather than the
+  // fabricated 2 hr default — same rule as the dashboard's AE Evac tentative
+  // row. The scheduledRaw check matters: AE Evac's real hours/price live in
+  // the schedule block, not Totals.Estimate/Total.ExTax — those SimPRO fields
+  // are $0/0 for EVERY AE Evac job, scheduled or not.
+  const estHours     = estRaw != null && estRaw > 0 ? String(estRaw) : (scheduledRaw ? "2" : "0");
 
   return [
     s(job.ID),                                                   // Job
@@ -261,7 +300,7 @@ function jobToRow(job: RawJob): string[] {
 }
 
 export default function BacklogPage() {
-  const [company,     setCompany]     = useState<CompanyId>(1);
+  const [view,        setView]        = useState<ViewId>(1);
   const [stage,       setStage]       = useState<Stage>("Pending");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [jobs,        setJobs]        = useState<RawJob[]>([]);
@@ -271,7 +310,10 @@ export default function BacklogPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing,  setRefreshing]  = useState(false);
 
-  const companyLabel = COMPANIES.find((c) => c.id === company)?.label ?? "";
+  const raw = isRawView(view);
+  const companyLabel = COMPANIES.find((c) => c.id === view)?.label
+    ?? RAW_VIEWS.find((v) => v.id === view)?.label
+    ?? "";
 
   // Track elapsed seconds while loading so the UI can show a "still working" message
   useEffect(() => {
@@ -281,17 +323,25 @@ export default function BacklogPage() {
     return () => clearInterval(t);
   }, [loading]);
 
-  const fetchJobs = useCallback(async (bg = false, force = false, co = company, st = stage) => {
+  // No manual "force refresh" — every view stays in sync on its own via the
+  // 60s auto-poll below plus the server-side background warmup, same as
+  // RM/AFAC/ADAIR already work.
+  const fetchJobs = useCallback(async (bg = false, v = view, st = stage) => {
     if (bg) setRefreshing(true);
     else setLoading(true);
     try {
-      const url = `/api/data?company=${co}&stage=${st}${force ? "&force=1" : ""}`;
+      const url = isRawView(v)
+        ? (v === "afac-prospect" ? "/api/afac-prospect/raw"
+          : v === "tech-ob" ? "/api/tech-support/raw?type=ob"
+          : v === "tech-it" ? "/api/tech-support/raw?type=it"
+          : "/api/tech-support/raw?type=qa")
+        : `/api/data?company=${v}&stage=${st}`;
       const res  = await fetch(url);
       const data = await res.json();
       if (data.error) {
         setError(`${data.error}${data.detail ? ": " + data.detail : ""}`);
       } else {
-        setJobs(Array.isArray(data) ? data : data.Result ?? []);
+        setJobs(Array.isArray(data) ? data : (data.rows ?? data.Result ?? []));
         setError(null);
         setLastUpdated(new Date());
       }
@@ -301,32 +351,38 @@ export default function BacklogPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [company, stage]);
+  }, [view, stage]);
 
-  // Re-fetch when company or stage changes
+  // Re-fetch when the view or stage changes. Raw views are cache-first
+  // server-side (see the /raw routes) so polling them is cheap, same as
+  // /api/data for RM/AFAC/ADAIR.
   useEffect(() => {
     setJobs([]);
-    fetchJobs(false, false, company, stage);
-    const id = setInterval(() => fetchJobs(true, false, company, stage), POLL_MS);
+    fetchJobs(false, view, stage);
+    const id = setInterval(() => fetchJobs(true, view, stage), POLL_MS);
     return () => clearInterval(id);
-  }, [company, stage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [view, stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const stageColor = stage === "Pending"
-    ? "bg-amber-100 text-amber-700"
-    : "bg-blue-100 text-blue-700";
+  const stageColor = raw
+    ? "bg-purple-100 text-purple-700"
+    : stage === "Pending" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700";
 
-  const headers = company === 8
-    ? (stage === "Pending" ? HEADERS_AFAC_PENDING : HEADERS_AFAC_PROGRESS)
-    : company === 10
-      ? (stage === "Pending" ? HEADERS_ADAIR_PENDING : HEADERS_ADAIR_PROGRESS)
-      : HEADERS;
-  const getRow = company === 8
-    ? (stage === "Pending" ? jobToRowAFACPending : jobToRowAFACProgress)
-    : company === 10
-      ? (stage === "Pending" ? jobToRowADAIRPending : jobToRowADAIRProgress)
-      : jobToRow;
+  const headers = isRawView(view)
+    ? RAW_HEADERS[view]
+    : view === 8
+      ? (stage === "Pending" ? HEADERS_AFAC_PENDING : HEADERS_AFAC_PROGRESS)
+      : view === 10
+        ? (stage === "Pending" ? HEADERS_ADAIR_PENDING : HEADERS_ADAIR_PROGRESS)
+        : HEADERS;
+  const getRow = isRawView(view)
+    ? (job: RawJob) => rawJobToRow(view, job)
+    : view === 8
+      ? (stage === "Pending" ? jobToRowAFACPending : jobToRowAFACProgress)
+      : view === 10
+        ? (stage === "Pending" ? jobToRowADAIRPending : jobToRowADAIRProgress)
+        : jobToRow;
 
-  const sortedJobs = [...jobs].sort((a, b) => {
+  const sortedJobs = raw ? jobs : [...jobs].sort((a, b) => {
     const ad = s(a._scheduledDate as string);
     const bd = s(b._scheduledDate as string);
     if (!ad && !bd) return 0;
@@ -344,7 +400,7 @@ export default function BacklogPage() {
     const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `backlog-${companyLabel.replace(/\s+/g, "-")}-${stage}-${ymd}.csv`;
+    a.download = `backlog-${companyLabel.replace(/\s+/g, "-")}${raw ? "" : `-${stage}`}-${ymd}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   }
@@ -369,18 +425,39 @@ export default function BacklogPage() {
           </button>
 
           {dropdownOpen && (
-            <div className="absolute top-full left-0 z-50 bg-white border border-neutral-200 rounded-b shadow-lg w-full sm:min-w-[200px]">
+            <div className="absolute top-full left-0 z-50 bg-white border border-neutral-200 rounded-b shadow-lg w-full sm:min-w-[220px]">
               {COMPANIES.map((co) => (
                 <button
                   key={co.id}
-                  onClick={() => { setCompany(co.id); setDropdownOpen(false); }}
+                  onClick={() => { setView(co.id); setDropdownOpen(false); }}
                   className={`w-full text-left flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-neutral-50 ${
-                    co.id === company ? "font-semibold text-blue-600" : "text-neutral-700"
+                    co.id === view ? "font-semibold text-blue-600" : "text-neutral-700"
                   }`}
                 >
                   <span className="w-3 h-3 rounded-sm bg-red-500 shrink-0" />
                   {co.label}
-                  {co.id === company && (
+                  {co.id === view && (
+                    <svg className="ml-auto w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+              <div className="border-t border-neutral-200 my-1" />
+              <div className="px-4 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
+                Raw data (dashboard widgets)
+              </div>
+              {RAW_VIEWS.map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() => { setView(v.id); setDropdownOpen(false); }}
+                  className={`w-full text-left flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-neutral-50 ${
+                    v.id === view ? "font-semibold text-blue-600" : "text-neutral-700"
+                  }`}
+                >
+                  <span className="w-3 h-3 rounded-sm bg-purple-500 shrink-0" />
+                  {v.label}
+                  {v.id === view && (
                     <svg className="ml-auto w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
@@ -402,29 +479,31 @@ export default function BacklogPage() {
           <option value="/dashboard2">Dashboard (NO DATACOM)</option>
         </select>
 
-        {/* Stage tabs */}
-        <div className="flex items-center px-2 w-full sm:w-auto">
-          {STAGES.map((st) => (
-            <button
-              key={st}
-              onClick={() => setStage(st)}
-              className={`flex-1 sm:flex-none px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-                st === stage
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-neutral-500 hover:text-neutral-800 hover:border-neutral-300"
-              }`}
-            >
-              {st}
-            </button>
-          ))}
-        </div>
+        {/* Stage tabs (not applicable to raw data views) */}
+        {!raw && (
+          <div className="flex items-center px-2 w-full sm:w-auto">
+            {STAGES.map((st) => (
+              <button
+                key={st}
+                onClick={() => setStage(st)}
+                className={`flex-1 sm:flex-none px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  st === stage
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-neutral-500 hover:text-neutral-800 hover:border-neutral-300"
+                }`}
+              >
+                {st}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Sub-header: title + controls */}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2 bg-white border-b border-neutral-200 text-xs text-neutral-500 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <span className="font-semibold text-neutral-800 text-sm truncate">
-            {companyLabel} — {stage}{company === 8 ? "" : " · A CFSP ONLY"}
+            {companyLabel}{!raw && ` — ${stage}${view === 8 ? "" : " · A CFSP ONLY"}`}
           </span>
           {!loading && (
             <span className={`px-2 py-0.5 rounded-full font-semibold text-xs shrink-0 ${stageColor}`}>
@@ -433,15 +512,8 @@ export default function BacklogPage() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {refreshing && <span className="text-blue-500">Refreshing…</span>}
+          {refreshing && <span className="text-blue-500">Syncing…</span>}
           {lastUpdated && <span className="hidden sm:inline">Updated: {lastUpdated.toLocaleTimeString()}</span>}
-          <button
-            onClick={() => fetchJobs(false, true)}
-            disabled={loading || refreshing}
-            className="px-2 py-1 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700 disabled:opacity-50"
-          >
-            Refresh now
-          </button>
           <button
             onClick={downloadCsv}
             disabled={loading || jobs.length === 0}
@@ -460,7 +532,7 @@ export default function BacklogPage() {
       )}
       {loading && (
         <div className="px-4 py-4 text-sm text-neutral-500 shrink-0">
-          <span>Loading {stage.toLowerCase()} jobs for {companyLabel}… ({loadingSecs}s)</span>
+          <span>Loading {raw ? "data" : `${stage.toLowerCase()} jobs`} for {companyLabel}… ({loadingSecs}s)</span>
           {loadingSecs >= 10 && (
             <span className="ml-3 text-amber-600">
               Fetching data from SimPRO — this can take up to 2 minutes on first load.
@@ -484,7 +556,9 @@ export default function BacklogPage() {
             {!loading && jobs.length === 0 && !error && (
               <tr>
                 <td colSpan={headers.length} className="px-3 py-8 text-sm text-neutral-400 text-center">
-                  No {stage.toLowerCase()} jobs found for A CFSP ONLY in {companyLabel}.
+                  {raw
+                    ? `No data found for ${companyLabel}.`
+                    : `No ${stage.toLowerCase()} jobs found for A CFSP ONLY in ${companyLabel}.`}
                 </td>
               </tr>
             )}
@@ -498,7 +572,7 @@ export default function BacklogPage() {
                 >
                   {cells.map((val, col) => (
                     <td key={col} className="px-3 py-2 text-xs text-neutral-700 border-r border-neutral-100 last:border-r-0 whitespace-nowrap max-w-xs truncate" title={val}>
-                      {col === 1 && val ? (
+                      {col === 1 && val && !raw ? (
                         <span className="inline-flex items-center gap-1.5">
                           <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: dotColor(job) }} />
                           {val}

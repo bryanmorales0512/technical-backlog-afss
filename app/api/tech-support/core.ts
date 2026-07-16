@@ -127,7 +127,7 @@ const KNOWN_DATACOM_CC_IDS = new Set<number>([366467]);
 const INTERNAL_CLIENTS = ["REDMEN FIRE", "AFAC", "ADAIR OPERATION", "Z SAFE"];
 
 export type TechSupportStats = { jobs: number; hours: number; amount: number };
-export type QARawJob = { id: unknown; dueDate: string; estHours: number };
+export type QARawJob = { id: unknown; dueDate: string; estHours: number; customer?: string };
 export type TechSupportResponse = {
   otherBillable:    TechSupportStats;
   investedTime:     TechSupportStats;
@@ -164,6 +164,20 @@ export async function writeObItCache(year: number, month: number, data: { otherB
   const json = JSON.stringify({ data, ts: Date.now() });
   fs.writeFile(obItCacheFile(year, month, nodc), json, "utf-8").catch(() => {});
   gcsWrite(`afss-tech-support-v113${tag}-${year}-${String(month).padStart(2, "0")}.json`, json);
+}
+
+export function obItRawCacheFile(year: number, month: number, nodc = false) {
+  const tag = nodc ? "-nodc" : "";
+  return join(CACHE_DIR, `afss-tech-support-raw-v1${tag}-${year}-${String(month).padStart(2, "0")}.json`);
+}
+export async function readObItRawCache(year: number, month: number, nodc = false): Promise<{ data: { otherBillable: TechSupportRawRow[]; investedTime: TechSupportRawRow[] }; ts: number } | null> {
+  try { return JSON.parse(await fs.readFile(obItRawCacheFile(year, month, nodc), "utf-8")); } catch { return null; }
+}
+export async function writeObItRawCache(year: number, month: number, data: { otherBillable: TechSupportRawRow[]; investedTime: TechSupportRawRow[] }, nodc = false) {
+  const tag = nodc ? "-nodc" : "";
+  const json = JSON.stringify({ data, ts: Date.now() });
+  fs.writeFile(obItRawCacheFile(year, month, nodc), json, "utf-8").catch(() => {});
+  gcsWrite(`afss-tech-support-raw-v1${tag}-${year}-${String(month).padStart(2, "0")}.json`, json);
 }
 
 export function qaCacheFile() { return join(CACHE_DIR, "afss-qa-v1.json"); }
@@ -467,12 +481,33 @@ export function jobEstHours(job: Record<string, unknown>): number {
   return Number.isFinite(est) && est > 0 ? est : 0;
 }
 
-// Hours are scheduled block hours (SimPRO's report basis); "jobs" counts one
-// per schedule row (not deduped per unique job) so the "# of Jobs" column
+export type TechSupportRawRow = { jobId: string; customer: string; ccName: string; date: string; hours: number };
+
+function statFromRows(rows: TechSupportRawRow[]): TechSupportStats {
+  return rows.reduce<TechSupportStats>((acc, r) => ({
+    jobs:   acc.jobs + 1,
+    hours:  Math.round((acc.hours  + r.hours)        * 100) / 100,
+    amount: Math.round((acc.amount + r.hours * RATE) * 100) / 100,
+  }), { jobs: 0, hours: 0, amount: 0 });
+}
+
+function rawRow(b: BlockInfo, jobMap: Map<string, Record<string, unknown>>, ccCache: Map<number, string>): TechSupportRawRow {
+  const job = jobMap.get(b.jobId);
+  return {
+    jobId:    b.jobId,
+    customer: String((job?.Customer as Record<string, unknown> | undefined)?.CompanyName ?? ""),
+    ccName:   resolvedCcName(b, ccCache) || b.ccName,
+    date:     b.date,
+    hours:    b.hours,
+  };
+}
+
+// Rows are scheduled block hours (SimPRO's report basis); one row per
+// schedule block (not deduped per unique job) so the row/"jobs" count
 // matches SimPRO's Schedule Breakdown "Results" count exactly — a job
 // scheduled across N days counts N times, same as SimPRO's row total.
-export function calcOtherBillable(blockList: BlockInfo[], jobMap: Map<string, Record<string, unknown>>, ccCache: Map<number, string>, excludeDatacom = false, afssIds: Set<number> = KNOWN_AFSS_CC_IDS): TechSupportStats {
-  const stat: TechSupportStats = { jobs: 0, hours: 0, amount: 0 };
+export function rawOtherBillable(blockList: BlockInfo[], jobMap: Map<string, Record<string, unknown>>, ccCache: Map<number, string>, excludeDatacom = false, afssIds: Set<number> = KNOWN_AFSS_CC_IDS): TechSupportRawRow[] {
+  const rows: TechSupportRawRow[] = [];
   for (const b of blockList) {
     if (!isAfssBlock(b, ccCache, afssIds)) continue;
     if (excludeDatacom && isDatacomBlock(b, ccCache)) continue;
@@ -483,15 +518,13 @@ export function calcOtherBillable(blockList: BlockInfo[], jobMap: Map<string, Re
       if (stage !== "pending" && stage !== "progress") continue;
       if (isInternalClient(job)) continue;
     }
-    stat.jobs++;
-    stat.hours  = Math.round((stat.hours  + b.hours)        * 100) / 100;
-    stat.amount = Math.round((stat.amount + b.hours * RATE) * 100) / 100;
+    rows.push(rawRow(b, jobMap, ccCache));
   }
-  return stat;
+  return rows;
 }
 
-export function calcInvestedTime(blockList: BlockInfo[], jobMap: Map<string, Record<string, unknown>>, ccCache: Map<number, string>, excludeDatacom = false, afssIds: Set<number> = KNOWN_AFSS_CC_IDS): TechSupportStats {
-  const stat: TechSupportStats = { jobs: 0, hours: 0, amount: 0 };
+export function rawInvestedTime(blockList: BlockInfo[], jobMap: Map<string, Record<string, unknown>>, ccCache: Map<number, string>, excludeDatacom = false, afssIds: Set<number> = KNOWN_AFSS_CC_IDS): TechSupportRawRow[] {
+  const rows: TechSupportRawRow[] = [];
   for (const b of blockList) {
     if (!isAfssBlock(b, ccCache, afssIds)) continue;
     if (excludeDatacom && isDatacomBlock(b, ccCache)) continue;
@@ -500,11 +533,17 @@ export function calcInvestedTime(blockList: BlockInfo[], jobMap: Map<string, Rec
     const stage = String(job.Stage ?? "").toLowerCase();
     if (stage !== "pending" && stage !== "progress") continue;
     if (!isInternalClient(job)) continue;
-    stat.jobs++;
-    stat.hours  = Math.round((stat.hours  + b.hours)        * 100) / 100;
-    stat.amount = Math.round((stat.amount + b.hours * RATE) * 100) / 100;
+    rows.push(rawRow(b, jobMap, ccCache));
   }
-  return stat;
+  return rows;
+}
+
+export function calcOtherBillable(blockList: BlockInfo[], jobMap: Map<string, Record<string, unknown>>, ccCache: Map<number, string>, excludeDatacom = false, afssIds: Set<number> = KNOWN_AFSS_CC_IDS): TechSupportStats {
+  return statFromRows(rawOtherBillable(blockList, jobMap, ccCache, excludeDatacom, afssIds));
+}
+
+export function calcInvestedTime(blockList: BlockInfo[], jobMap: Map<string, Record<string, unknown>>, ccCache: Map<number, string>, excludeDatacom = false, afssIds: Set<number> = KNOWN_AFSS_CC_IDS): TechSupportStats {
+  return statFromRows(rawInvestedTime(blockList, jobMap, ccCache, excludeDatacom, afssIds));
 }
 
 export function aggregateQA(rawJobs: QARawJob[], dateTo: string): TechSupportStats {
@@ -548,7 +587,7 @@ export async function fetchQualityAssurance(): Promise<QARawJob[]> {
   const rawJobs: QARawJob[] = [];
   const qaId = await resolvedQaId();
   if (!qaId) return rawJobs;
-  const cols = "ID,Totals,Technicians,DueDate";
+  const cols = "ID,Totals,Technicians,DueDate,Customer";
   const seen = new Set<unknown>();
   let items: Record<string, unknown>[] = [];
   try {
@@ -573,7 +612,8 @@ export async function fetchQualityAssurance(): Promise<QARawJob[]> {
     const res    = totals?.ResourcesCost as Record<string, unknown> | undefined;
     const labHrs = res?.LaborHours as Record<string, unknown> | undefined;
     const est    = labHrs?.Estimate != null ? Number(labHrs.Estimate) : 0;
-    rawJobs.push({ id: job.ID, dueDate: String(job.DueDate ?? ""), estHours: est > 0 ? est : 2 });
+    const customer = String((job.Customer as Record<string, unknown> | undefined)?.CompanyName ?? "");
+    rawJobs.push({ id: job.ID, dueDate: String(job.DueDate ?? ""), estHours: est > 0 ? est : 2, customer });
   }
   return rawJobs;
 }
@@ -598,7 +638,7 @@ function addStats(a: TechSupportStats, b: TechSupportStats): TechSupportStats {
   };
 }
 
-async function buildObIt(year: number, month: number): Promise<{ regular: { otherBillable: TechSupportStats; investedTime: TechSupportStats }; nodc: { otherBillable: TechSupportStats; investedTime: TechSupportStats } }> {
+async function buildBlocksAndJobMap(year: number, month: number): Promise<{ blockList: BlockInfo[]; jobMap: Map<string, Record<string, unknown>>; ccCache: Map<number, string>; afssIds: Set<number> }> {
   const tentativeIds = await getTentativeStaffIds();
   scheduleCcIdRefresh();
   await refreshCcNames();
@@ -612,6 +652,76 @@ async function buildObIt(year: number, month: number): Promise<{ regular: { othe
   await resolveUnknownCcNames(blockList, ccCache);
   await saveCcCache(ccCache);
   const jobMap = await fetchJobDetailsMap(jobIds);
+  return { blockList, jobMap, ccCache, afssIds };
+}
+
+// buildObIt() (stats) and buildObItRaw() (raw rows) both need the same
+// blocks+jobMap for a given month — share one live pull between them (and
+// across repeated calls within OB_IT_CACHE_TTL) instead of each doing its
+// own full SimPRO scan back-to-back, which is what made switching between
+// the OB/IT raw views and the dashboard cards slow.
+type BlocksAndJobMap = { blockList: BlockInfo[]; jobMap: Map<string, Record<string, unknown>>; ccCache: Map<number, string>; afssIds: Set<number> };
+const _blocksJobMapInFlight = new Map<string, Promise<BlocksAndJobMap>>();
+const _blocksJobMapCache    = new Map<string, { data: BlocksAndJobMap; ts: number }>();
+async function buildBlocksAndJobMapCached(year: number, month: number, force = false): Promise<BlocksAndJobMap> {
+  const key = `${year}-${month}`;
+  if (!force) {
+    const hit = _blocksJobMapCache.get(key);
+    if (hit && Date.now() - hit.ts < OB_IT_CACHE_TTL) return hit.data;
+  }
+  let p = _blocksJobMapInFlight.get(key);
+  if (!p || force) {
+    p = buildBlocksAndJobMap(year, month).finally(() => _blocksJobMapInFlight.delete(key));
+    _blocksJobMapInFlight.set(key, p);
+  }
+  const data = await p;
+  _blocksJobMapCache.set(key, { data, ts: Date.now() });
+  return data;
+}
+
+// Raw contributing rows behind the OB/IT cards — a diagnostic view, so unlike
+// buildObIt() it doesn't merge in the current month's data for a future-month
+// query; it always reflects exactly the target month's window.
+async function buildObItRaw(year: number, month: number, excludeDatacom = false, force = false): Promise<{ otherBillable: TechSupportRawRow[]; investedTime: TechSupportRawRow[] }> {
+  const { blockList, jobMap, ccCache, afssIds } = await buildBlocksAndJobMapCached(year, month, force);
+  return {
+    otherBillable: rawOtherBillable(blockList, jobMap, ccCache, excludeDatacom, afssIds),
+    investedTime:  rawInvestedTime(blockList, jobMap, ccCache, excludeDatacom, afssIds),
+  };
+}
+
+const _obItRawInFlight = new Map<string, Promise<{ otherBillable: TechSupportRawRow[]; investedTime: TechSupportRawRow[] }>>();
+function buildObItRawDeduped(year: number, month: number, excludeDatacom: boolean, forceNew = false) {
+  const key = `${year}-${month}-${excludeDatacom ? "nodc" : "dc"}`;
+  if (forceNew) _obItRawInFlight.delete(key);
+  let p = _obItRawInFlight.get(key);
+  if (!p) {
+    p = buildObItRaw(year, month, excludeDatacom, forceNew).finally(() => _obItRawInFlight.delete(key));
+    _obItRawInFlight.set(key, p);
+  }
+  return p;
+}
+
+// Cache-first, same pattern as the OB/IT stats cache — serves instantly from
+// the last live pull (same OB_IT_CACHE_TTL freshness window) instead of
+// re-running the full SimPRO pull on every view switch; "Refresh now" sets
+// force to bypass it.
+export async function getObItRaw(year: number, month: number, excludeDatacom = false, force = false): Promise<{ otherBillable: TechSupportRawRow[]; investedTime: TechSupportRawRow[] }> {
+  const cached = await readObItRawCache(year, month, excludeDatacom);
+  const fresh  = cached && Date.now() - cached.ts < OB_IT_CACHE_TTL;
+  if (fresh && !force) return cached.data;
+  try {
+    const data = await buildObItRawDeduped(year, month, excludeDatacom, force);
+    await writeObItRawCache(year, month, data, excludeDatacom);
+    return data;
+  } catch (err) {
+    if (cached) return cached.data;
+    throw err;
+  }
+}
+
+async function buildObIt(year: number, month: number): Promise<{ regular: { otherBillable: TechSupportStats; investedTime: TechSupportStats }; nodc: { otherBillable: TechSupportStats; investedTime: TechSupportStats } }> {
+  const { blockList, jobMap, ccCache, afssIds } = await buildBlocksAndJobMapCached(year, month);
   const regular = {
     otherBillable: calcOtherBillable(blockList, jobMap, ccCache, false, afssIds),
     investedTime:  calcInvestedTime(blockList, jobMap, ccCache, false, afssIds),
@@ -666,6 +776,22 @@ export function buildQaDeduped(forceNew = false): Promise<QARawJob[]> {
   return _qaInFlight;
 }
 
+// Cache-first (same QA_CACHE_TTL as the stats route) so the raw QA view
+// doesn't re-run the full staff+job scan on every open.
+export async function getQaRaw(force = false): Promise<QARawJob[]> {
+  const cached = await readQaCache();
+  const fresh  = cached && Date.now() - cached.ts < QA_CACHE_TTL;
+  if (fresh && !force) return cached.data;
+  try {
+    const data = await buildQaDeduped(force);
+    await writeQaCache(data);
+    return data;
+  } catch (err) {
+    if (cached) return cached.data;
+    throw err;
+  }
+}
+
 export async function warmTechSupport(): Promise<void> {
   const aest  = new Date(Date.now() + 10 * 60 * 60 * 1000);
   const year  = aest.getUTCFullYear();
@@ -688,5 +814,9 @@ export async function warmTechSupport(): Promise<void> {
       await writeObItCache(y, m, obIt.regular, false);
       await writeObItCache(y, m, obIt.nodc,    true);
     }
+    // Reuses the blocks+jobMap the stats build above just warmed (see
+    // buildBlocksAndJobMapCached) — no extra live SimPRO pull for this.
+    // getObItRaw() writes its own cache entry internally.
+    await getObItRaw(y, m, false).catch(() => null);
   }
 }
